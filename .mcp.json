@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "agent-telemetry": {
+      "command": "/Users/yokiel/agent-telemetry-poc/.venv/bin/python",
+      "args": ["-m", "src.mcp_server.server"],
+      "cwd": "/Users/yokiel/agent-telemetry-poc"
+    }
+  }
+}

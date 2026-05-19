@@ -1,0 +1,77 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/teams/v1.22/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.22",
+  "version": "1.0.4",
+  "id": "74b7ed5e-f1dc-490d-8cf3-a46d0f404162",
+  "developer": {
+    "name": "DWS",
+    "websiteUrl": "https://www.kyndryl.com/us/en/services/digital-workplace",
+    "privacyUrl": "https://www.kyndryl.com/us/en/services/digital-workplace",
+    "termsOfUseUrl": "https://www.kyndryl.com/us/en/services/digital-workplace"
+  },
+  "name": {
+    "short": "Agent-Telemetry",
+    "full": "Agent-Telemetry"
+  },
+  "description": {
+    "short": "Provides Telemetry Data For Copilot Studio Agents",
+    "full": "Provides Telemetry Data For Copilot Studio Agents"
+  },
+  "icons": {
+    "color": "color-icon.png",
+    "outline": "outline-icon.png"
+  },
+  "accentColor": "#0F6CBD",
+  "validDomains": [],
+  "webApplicationInfo": {
+    "id": "74b7ed5e-f1dc-490d-8cf3-a46d0f404162",
+    "resource": "api://example.com"
+  },
+  "bots": [
+    {
+      "botId": "74b7ed5e-f1dc-490d-8cf3-a46d0f404162",
+      "scopes": [
+        "personal",
+        "team",
+        "groupChat",
+        "copilot"
+      ],
+      "supportsFiles": true,
+      "isNotificationOnly": false,
+      "commandLists": [
+        {
+          "scopes": ["personal", "copilot"],
+          "commands": [
+            {
+              "title": "Weekly summary",
+              "description": "Show me a summary of this week's agent conversations"
+            },
+            {
+              "title": "Deployed agents",
+              "description": "Which agents are deployed and when were they last published?"
+            },
+            {
+              "title": "Failed connectors",
+              "description": "Show me all failed connector calls from the last 7 days"
+            },
+            {
+              "title": "Top topics",
+              "description": "What topics are users asking about most?"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "copilotAgents": {
+    "customEngineAgents": [
+      {
+        "id": "74b7ed5e-f1dc-490d-8cf3-a46d0f404162",
+        "type": "bot",
+        "disclaimer": {
+          "text": "This agent uses AI. Please verify important information."
+        }
+      }
+    ]
+  }
+}

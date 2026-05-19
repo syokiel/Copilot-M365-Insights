@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.venv/bin/python -)",
+      "Bash(.venv/bin/python -m src.main)",
+      "Bash(.venv/bin/python -m src.main sync)",
+      "Bash(.venv/bin/python -c \"import certifi; print\\(certifi.where\\(\\)\\)\")",
+      "Read(//private/etc/ssl/**)",
+      "Bash(security find-certificate *)",
+      "Bash(security export *)",
+      "Read(//tmp/**)",
+      "Bash(SSL_CERT_FILE=/tmp/combined-certs.pem .venv/bin/python -c ' *)",
+      "Bash(xargs -I{} cat {} /tmp/proxy-ca.pem)",
+      "Bash(SSL_CERT_FILE=/tmp/full-bundle.pem REQUESTS_CA_BUNDLE=/tmp/full-bundle.pem .venv/bin/python -c ' *)",
+      "Bash(.venv/bin/python -m src.main export)",
+      "Bash(.venv/bin/pip install *)",
+      "Bash(mkdir -p /Users/yokiel/agent-telemetry-poc/.claude)",
+      "Bash(timeout 5 .venv/bin/python -m src.mcp_server.server)",
+      "Bash(.venv/bin/python -c \"import jwt; print\\('PyJWT OK', jwt.__version__\\)\")",
+      "Bash(chmod +x /Users/yokiel/agent-telemetry-poc/deploy.sh)",
+      "Bash(bash deploy.sh)"
+    ],
+    "additionalDirectories": [
+      "/private/tmp",
+      "/Users/yokiel/agent-telemetry-poc/.claude"
+    ]
+  }
+}
