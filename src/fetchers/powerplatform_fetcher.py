@@ -263,22 +263,49 @@ class PowerPlatformFetcher:
     # ------------------------------------------------------------------
 
     def fetch_dlp_policies(self) -> list[dict]:
-        """Return tenant-level DLP policies. Requires Power Platform Admin role on the SP."""
-        url = f"{_BAP_BASE}/providers/Microsoft.BusinessAppPlatform/scopes/admin/apiPolicies"
+        """Return tenant-level DLP policies."""
+        # Try the newer Power Platform API first — better app-only SP support
+        try:
+            resp = requests.get(
+                f"{_PP_API_BASE}/governance/connectorPolicies",
+                headers=self._pp_headers(),
+                params={"api-version": "2022-03-01-preview"},
+                timeout=30,
+            )
+            resp.raise_for_status()
+            out = []
+            for p in resp.json().get("value", []):
+                props = p.get("properties", {})
+                groups = props.get("connectorGroups", [])
+                # Newer API uses Confidential/General; older used Business/NonBusiness
+                out.append({
+                    "policy_id": p.get("name", ""),
+                    "display_name": props.get("displayName", ""),
+                    "environment_type": props.get("environmentType", ""),
+                    "created_by": (props.get("createdBy", {}) or {}).get("displayName", ""),
+                    "created_at": props.get("createdTime", ""),
+                    "modified_at": props.get("lastModifiedTime", ""),
+                    "enforcement_mode": props.get("etag", ""),
+                    "blocked_connectors": _connector_names(groups, "Blocked"),
+                    "business_connectors": _connector_names(groups, "Confidential") or _connector_names(groups, "Business"),
+                    "non_business_connectors": _connector_names(groups, "General") or _connector_names(groups, "NonBusiness"),
+                })
+            return out
+        except Exception:
+            pass
+
+        # Fall back to BAP Admin API
         resp = requests.get(
-            url,
+            f"{_BAP_BASE}/providers/Microsoft.BusinessAppPlatform/scopes/admin/apiPolicies",
             headers=self._bap_headers(),
-            params={"api-version": "2016-11-01-preview"},
+            params={"api-version": "2021-04-01"},
             timeout=30,
         )
         resp.raise_for_status()
         out = []
         for p in resp.json().get("value", []):
             props = p.get("properties", {})
-            connector_groups = props.get("connectorGroups", [])
-            blocked = _connector_names(connector_groups, "Blocked")
-            business = _connector_names(connector_groups, "Business")
-            non_business = _connector_names(connector_groups, "NonBusiness")
+            groups = props.get("connectorGroups", [])
             out.append({
                 "policy_id": p.get("name", ""),
                 "display_name": props.get("displayName", ""),
@@ -287,9 +314,9 @@ class PowerPlatformFetcher:
                 "created_at": props.get("createdTime", ""),
                 "modified_at": props.get("lastModifiedTime", ""),
                 "enforcement_mode": props.get("etag", ""),
-                "blocked_connectors": blocked,
-                "business_connectors": business,
-                "non_business_connectors": non_business,
+                "blocked_connectors": _connector_names(groups, "Blocked"),
+                "business_connectors": _connector_names(groups, "Business"),
+                "non_business_connectors": _connector_names(groups, "NonBusiness"),
             })
         return out
 
