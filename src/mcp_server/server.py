@@ -238,6 +238,22 @@ Exceptions logged by the agent runtime in Application Insights.
 - exception_message: exception detail message
 - timestamp: when the exception was logged
 
+### viva_person_insights
+Per-user weekly Viva Insights activity breakdown (Graph Analytics API).
+- user_id: Azure AD object ID — join to conversation_events.user_id
+- week_start / week_end: ISO dates bounding the week
+- focus_hours: uninterrupted focus blocks
+- meeting_hours: scheduled meeting time
+- email_hours: Outlook / email time
+- chat_hours: Teams chat time
+- after_hours: collaboration outside typical working hours
+NOTE: requires Analytics.ReadAll app permission + Viva Insights license per user.
+      Rows only appear for users who have had production conversations.
+
+### viva_org_insights
+Organisation-wide Viva Insights aggregate metrics (Management API — stubbed).
+Populated once the Viva Insights Management API access is provisioned.
+
 ### az_alerts
 Azure Monitor alerts that fired against agent resources.
 - alert_id: Azure resource ID of the alert instance
@@ -402,6 +418,42 @@ async def list_tools() -> ListToolsResult:
             description="List Power Platform environments with their agents and applicable DLP policies.",
             inputSchema={"type": "object", "properties": {}, "required": []},
         ),
+        Tool(
+            name="get_viva_insights",
+            description="Per-user Viva Insights weekly summary: focus, meeting, email, chat, and after-hours. Joined with conversation activity where possible.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "user_id":     {"type": "string", "description": "Filter to a single Azure AD user ID"},
+                    "week_start":  {"type": "string", "description": "ISO date e.g. 2026-05-19 — return data for this week only"},
+                    "limit":       {"type": "integer", "default": 50},
+                },
+                "required": [],
+            },
+        ),
+        Tool(
+            name="get_agent_activity",
+            description="Per-agent conversation breakdown: total, production, and test conversation counts with last activity timestamp. Joins telemetry to the agent registry via topic name prefix.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "design_mode": {"type": "boolean", "description": "True = test only, False = production only, omit for both"},
+                },
+                "required": [],
+            },
+        ),
+        Tool(
+            name="get_user_activity",
+            description="Per-user conversation summary: conversation count, message count, channels used, agents interacted with, and last activity. Note: user_id is an Azure AD object ID.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "design_mode": {"type": "boolean", "description": "True = test only, False = production only, omit for both"},
+                    "limit": {"type": "integer", "default": 50},
+                },
+                "required": [],
+            },
+        ),
     ])
 
 
@@ -427,6 +479,9 @@ def _dispatch(name: str, args: dict) -> object:
         if name == "run_sql":               return _run_sql(conn, args["query"])
         if name == "get_agents":            return _get_agents(conn)
         if name == "get_environments":      return _get_environments(conn)
+        if name == "get_viva_insights":      return _get_viva_insights(conn, args)
+        if name == "get_agent_activity":    return _get_agent_activity(conn, args)
+        if name == "get_user_activity":     return _get_user_activity(conn, args)
         raise ValueError(f"Unknown tool: {name}")
     finally:
         conn.close()
@@ -593,6 +648,96 @@ def _get_environments(conn: sqlite3.Connection) -> list[dict]:
             "dlp_policies": policies_all_envs + policies_specific,
         })
     return result
+
+
+def _get_viva_insights(conn: sqlite3.Connection, args: dict) -> list[dict]:
+    filters, params = [], []
+    if "user_id" in args:
+        filters.append("v.user_id = ?"); params.append(args["user_id"])
+    if "week_start" in args:
+        filters.append("v.week_start = ?"); params.append(args["week_start"])
+    where = f"WHERE {' AND '.join(filters)}" if filters else ""
+    limit = int(args.get("limit", 50))
+
+    return _rows(conn, f"""
+        SELECT
+            v.user_id,
+            v.week_start,
+            v.week_end,
+            ROUND(v.focus_hours,   2) AS focus_hours,
+            ROUND(v.meeting_hours, 2) AS meeting_hours,
+            ROUND(v.email_hours,   2) AS email_hours,
+            ROUND(v.chat_hours,    2) AS chat_hours,
+            ROUND(v.after_hours,   2) AS after_hours,
+            ROUND(v.focus_hours + v.meeting_hours + v.email_hours + v.chat_hours, 2)
+                AS total_collaboration_hours,
+            COUNT(DISTINCT e.conversation_id) AS agent_conversations_that_week
+        FROM viva_person_insights v
+        LEFT JOIN conversation_events e
+            ON e.user_id = v.user_id
+            AND date(e.timestamp) BETWEEN v.week_start AND v.week_end
+            AND e.design_mode = 0
+        {where}
+        GROUP BY v.row_id
+        ORDER BY v.week_start DESC, v.user_id
+        LIMIT ?
+    """, (*params, limit))
+
+
+def _get_agent_activity(conn: sqlite3.Connection, args: dict) -> list[dict]:
+    dm_filter = ""
+    params: list = []
+    if "design_mode" in args:
+        dm_filter = "AND e.design_mode = ?"
+        params.append(1 if args["design_mode"] else 0)
+
+    return _rows(conn, f"""
+        SELECT
+            b.display_name          AS agent_name,
+            b.schema_name,
+            b.published_at,
+            env.display_name        AS environment,
+            COUNT(DISTINCT e.conversation_id)                                       AS total_conversations,
+            COUNT(DISTINCT CASE WHEN e.design_mode = 0 THEN e.conversation_id END)  AS production_conversations,
+            COUNT(DISTINCT CASE WHEN e.design_mode = 1 THEN e.conversation_id END)  AS test_conversations,
+            MAX(e.timestamp)        AS last_activity
+        FROM pva_bots b
+        LEFT JOIN pva_environments env ON env.environment_id = b.environment_id
+        LEFT JOIN conversation_events e
+            ON e.topic_name LIKE b.schema_name || '.topic.%' {dm_filter}
+        GROUP BY b.bot_id, b.display_name, b.schema_name, b.published_at, env.display_name
+        ORDER BY last_activity DESC NULLS LAST
+    """, tuple(params))
+
+
+def _get_user_activity(conn: sqlite3.Connection, args: dict) -> list[dict]:
+    limit = int(args.get("limit", 50))
+    filters = ["user_id IS NOT NULL", "user_id != ''"]
+    params: list = []
+    if "design_mode" in args:
+        filters.append("design_mode = ?")
+        params.append(1 if args["design_mode"] else 0)
+    where = "WHERE " + " AND ".join(filters)
+
+    return _rows(conn, f"""
+        SELECT
+            e.user_id,
+            COUNT(DISTINCT e.conversation_id)   AS total_conversations,
+            SUM(CASE WHEN e.event_name = 'BotMessageReceived' THEN 1 ELSE 0 END) AS messages_sent,
+            GROUP_CONCAT(DISTINCT e.channel_id) AS channels,
+            GROUP_CONCAT(DISTINCT
+                CASE WHEN e.topic_name LIKE '%.topic.%'
+                THEN substr(e.topic_name, 1, instr(e.topic_name, '.topic.') - 1)
+                END
+            )                                   AS agents_interacted,
+            MIN(e.timestamp)                    AS first_seen,
+            MAX(e.timestamp)                    AS last_activity
+        FROM conversation_events e
+        {where}
+        GROUP BY e.user_id
+        ORDER BY last_activity DESC
+        LIMIT ?
+    """, (*params, limit))
 
 
 # ---------------------------------------------------------------------------

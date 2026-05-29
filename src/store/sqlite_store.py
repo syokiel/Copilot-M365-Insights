@@ -164,6 +164,37 @@ CREATE TABLE IF NOT EXISTS teams_usage (
     report_period         TEXT
 );
 
+-- ── Viva Insights ──────────────────────────────────────────────────────────
+
+-- Personal analytics: one row per (user, week).
+-- Hours are decimal (1.5 = 1h30m).  Populated from Graph Analytics API.
+CREATE TABLE IF NOT EXISTS viva_person_insights (
+    row_id          TEXT PRIMARY KEY,   -- sha1(user_id|week_start)
+    user_id         TEXT NOT NULL,      -- Azure AD object ID
+    week_start      TEXT NOT NULL,      -- ISO date of Monday
+    week_end        TEXT,               -- ISO date of Sunday
+    focus_hours     REAL DEFAULT 0,     -- uninterrupted focus blocks
+    meeting_hours   REAL DEFAULT 0,     -- scheduled meetings
+    email_hours     REAL DEFAULT 0,     -- time in email / Outlook
+    chat_hours      REAL DEFAULT 0,     -- Teams chat
+    after_hours     REAL DEFAULT 0,     -- collaboration outside working hours
+    fetched_at      TEXT
+);
+
+-- Org-level aggregates: populated by Viva Insights Management API (stubbed).
+CREATE TABLE IF NOT EXISTS viva_org_insights (
+    row_id              TEXT PRIMARY KEY,   -- sha1(metric_date|period)
+    metric_date         TEXT NOT NULL,
+    period              TEXT,               -- e.g. "Week"
+    avg_focus_hours     REAL,
+    avg_meeting_hours   REAL,
+    avg_email_hours     REAL,
+    avg_chat_hours      REAL,
+    avg_after_hours     REAL,
+    population_size     INTEGER,
+    fetched_at          TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_bot_sol      ON pva_bot_solutions(solution_id);
 CREATE INDEX IF NOT EXISTS idx_events_conv  ON conversation_events(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_events_run   ON conversation_events(run_id);
@@ -509,6 +540,59 @@ class SqliteStore:
     def fetch_teams_usage(self) -> list[dict]:
         rows = self._conn.execute(
             "SELECT * FROM teams_usage ORDER BY user_principal_name"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    # ------------------------------------------------------------------
+    # Viva Insights tables
+    # ------------------------------------------------------------------
+
+    def upsert_viva_person_insights(self, rows: list[dict]) -> int:
+        written = 0
+        with self._conn:
+            for r in rows:
+                cur = self._conn.execute(
+                    """INSERT OR REPLACE INTO viva_person_insights
+                    (row_id, user_id, week_start, week_end,
+                     focus_hours, meeting_hours, email_hours, chat_hours, after_hours,
+                     fetched_at)
+                    VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                    (r["row_id"], r["user_id"], r["week_start"], r.get("week_end"),
+                     r.get("focus_hours", 0), r.get("meeting_hours", 0),
+                     r.get("email_hours", 0), r.get("chat_hours", 0),
+                     r.get("after_hours", 0), r.get("fetched_at")),
+                )
+                written += cur.rowcount
+        return written
+
+    def upsert_viva_org_insights(self, rows: list[dict]) -> int:
+        written = 0
+        with self._conn:
+            for r in rows:
+                cur = self._conn.execute(
+                    """INSERT OR REPLACE INTO viva_org_insights
+                    (row_id, metric_date, period,
+                     avg_focus_hours, avg_meeting_hours, avg_email_hours,
+                     avg_chat_hours, avg_after_hours, population_size, fetched_at)
+                    VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                    (r["row_id"], r["metric_date"], r.get("period"),
+                     r.get("avg_focus_hours"), r.get("avg_meeting_hours"),
+                     r.get("avg_email_hours"), r.get("avg_chat_hours"),
+                     r.get("avg_after_hours"), r.get("population_size"),
+                     r.get("fetched_at")),
+                )
+                written += cur.rowcount
+        return written
+
+    def fetch_viva_person_insights(self) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM viva_person_insights ORDER BY week_start DESC, user_id"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def fetch_viva_org_insights(self) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM viva_org_insights ORDER BY metric_date DESC"
         ).fetchall()
         return [dict(r) for r in rows]
 

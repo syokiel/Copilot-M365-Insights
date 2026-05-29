@@ -15,6 +15,7 @@ from src.auth import get_logs_client
 from src.crossref import build_crossref
 from src.fetchers.azure_monitor_fetcher import AzureMonitorFetcher
 from src.fetchers.graph_fetcher import GraphFetcher
+from src.fetchers.viva_fetcher import VivaFetcher
 from src.fetchers.otel_fetcher import OtelFetcher
 from src.fetchers.powerplatform_fetcher import PowerPlatformFetcher
 from src.store.sqlite_store import SqliteStore
@@ -147,6 +148,42 @@ def cmd_sync() -> str:
         except Exception as e:
             print(f"  WARNING: {label} fetch failed: {e}")
     graph_store.close()
+
+    print("Fetching Viva Insights data...")
+    viva_fetcher = VivaFetcher(
+        tenant_id=settings.azure_tenant_id,
+        client_id=settings.azure_client_id,
+        client_secret=settings.azure_client_secret,
+    )
+    viva_store = SqliteStore(settings.db_path)
+
+    # Collect user IDs from existing conversation data to scope the per-user fetch
+    known_user_ids = [
+        r["user_id"] for r in viva_store.fetch_viva_person_insights()
+    ] if False else []  # bootstrap: pull from conversation_events on first run
+    known_user_ids = list({
+        row["user_id"]
+        for row in viva_store._conn.execute(
+            "SELECT DISTINCT user_id FROM conversation_events "
+            "WHERE user_id IS NOT NULL AND user_id != '' AND design_mode = 0"
+        ).fetchall()
+    })
+
+    for label, fetch_fn, upsert_fn in [
+        ("person insights",
+         lambda: viva_fetcher.fetch_person_insights(known_user_ids),
+         viva_store.upsert_viva_person_insights),
+        ("org insights",
+         viva_fetcher.fetch_org_insights,
+         viva_store.upsert_viva_org_insights),
+    ]:
+        try:
+            items = fetch_fn()
+            written = upsert_fn(items)
+            print(f"  {label}: {len(items)} fetched, {written} written")
+        except Exception as e:
+            print(f"  WARNING: {label} fetch failed: {e}")
+    viva_store.close()
 
     if settings.azure_storage_account:
         from src.store.blob_store import upload_db
