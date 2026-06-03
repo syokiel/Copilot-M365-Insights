@@ -52,6 +52,41 @@ AppDependencies
 """
 
 
+_MODEL_CALLS_KQL = """
+AppDependencies
+| extend props = parse_json(Properties)
+| where isnotempty(tostring(props["gen_ai.usage.input_tokens"]))
+    or isnotempty(tostring(props["gen_ai.request.model"]))
+    or Target has "openai.azure.com"
+    or Target has "cognitiveservices.azure.com"
+    or Target has "api.openai.com"
+    or Target has "services.ai.azure.com"
+    or Name has_any ("openai", "gpt", "claude", "gemini", "generative")
+| project
+    Timestamp                = TimeGenerated,
+    OperationName            = Name,
+    GenAiOperationName       = coalesce(tostring(props["gen_ai.operation.name"]), "chat"),
+    GenAiProviderName        = tostring(props["gen_ai.provider.name"]),
+    GenAiRequestModel        = tostring(props["gen_ai.request.model"]),
+    GenAiResponseModel       = tostring(props["gen_ai.response.model"]),
+    GenAiUsageInputTokens    = toint(props["gen_ai.usage.input_tokens"]),
+    GenAiUsageOutputTokens   = toint(props["gen_ai.usage.output_tokens"]),
+    GenAiAgentId             = tostring(props["gen_ai.agent.id"]),
+    GenAiAgentName           = tostring(props["gen_ai.agent.name"]),
+    GenAiEnvironmentId       = tostring(props["gen_ai.environment.id"]),
+    SessionId,
+    UserId,
+    ConversationId           = tostring(props["conversationId"]),
+    DependencyType,
+    Target,
+    DurationMs,
+    Success,
+    ResultCode,
+    Properties
+| order by Timestamp desc
+"""
+
+
 class OtelFetcher:
     def __init__(
         self,
@@ -86,3 +121,7 @@ class OtelFetcher:
     def fetch_connector_calls(self) -> list[dict]:
         """Connector/action calls (Teams, Outlook, etc.) from AppDependencies."""
         return self._run_query(_CONNECTOR_CALLS_KQL)
+
+    def fetch_model_calls(self) -> list[dict]:
+        """AI model invocations from AppDependencies — token usage, model, provider."""
+        return self._run_query(_MODEL_CALLS_KQL)

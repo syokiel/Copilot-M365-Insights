@@ -7,7 +7,7 @@ from openpyxl.worksheet.worksheet import Worksheet
 from src.writers._style import HEADER_FILL, HEADER_FONT, LEFT, autofit_columns
 
 
-def write(ws: Worksheet, events: list[dict], connector_calls: list[dict]) -> None:
+def write(ws: Worksheet, events: list[dict], connector_calls: list[dict], model_calls: list[dict] = []) -> None:
     prod_events = [e for e in events if not e.get("DesignMode")]
     prod_connectors = [c for c in connector_calls if not c.get("DesignMode")]
 
@@ -23,6 +23,15 @@ def write(ws: Worksheet, events: list[dict], connector_calls: list[dict]) -> Non
     timestamps = [e["Timestamp"] for e in events if e.get("Timestamp")]
     earliest = min(timestamps) if timestamps else None
     latest = max(timestamps) if timestamps else None
+
+    total_input_tokens = sum(r.get("gen_ai_usage_input_tokens") or 0 for r in model_calls)
+    total_output_tokens = sum(r.get("gen_ai_usage_output_tokens") or 0 for r in model_calls)
+    model_counter: Counter = Counter(
+        r.get("gen_ai_request_model") or r.get("gen_ai_response_model", "unknown")
+        for r in model_calls
+        if r.get("gen_ai_request_model") or r.get("gen_ai_response_model")
+    )
+    agents_using_ai = {r.get("gen_ai_agent_name") or r.get("gen_ai_agent_id", "") for r in model_calls if r.get("gen_ai_agent_id")}
 
     rows = [
         ("Report generated", datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")),
@@ -49,6 +58,24 @@ def write(ws: Worksheet, events: list[dict], connector_calls: list[dict]) -> Non
         rows.append(("── Top Connectors ────────────────────────────", None))
         for name, count in connector_counter.most_common(10):
             rows.append((f"  {name}", count))
+
+    rows.append((None, None))
+    rows.append(("── Generative AI Usage ───────────────────────", None))
+    if model_calls:
+        rows += [
+            ("AI model calls",               len(model_calls)),
+            ("Agents using generative AI",   len(agents_using_ai)),
+            ("Total input tokens",           total_input_tokens),
+            ("Total output tokens",          total_output_tokens),
+            ("Total tokens",                 total_input_tokens + total_output_tokens),
+        ]
+        if model_counter:
+            rows.append((None, None))
+            rows.append(("── Models Used ───────────────────────────────", None))
+            for model, count in model_counter.most_common():
+                rows.append((f"  {model}", count))
+    else:
+        rows.append(("  No AI model call data in this window", None))
 
     headers = ["Metric", "Value"]
     ws.column_dimensions["A"].width = 48

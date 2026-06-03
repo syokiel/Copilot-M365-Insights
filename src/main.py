@@ -28,6 +28,7 @@ def cmd_sync() -> str:
 
     events: list[dict] = []
     connector_calls: list[dict] = []
+    model_calls: list[dict] = []
 
     if settings.log_analytics_workspace_id:
         try:
@@ -42,6 +43,9 @@ def cmd_sync() -> str:
             print("Fetching connector calls...")
             connector_calls = fetcher.fetch_connector_calls()
             print(f"  {len(connector_calls)} connector calls")
+            print("Fetching AI model calls...")
+            model_calls = fetcher.fetch_model_calls()
+            print(f"  {len(model_calls)} AI model calls")
         except Exception as e:
             print(f"  WARNING: Log Analytics fetch failed: {e}")
     else:
@@ -49,6 +53,9 @@ def cmd_sync() -> str:
 
     store = SqliteStore(settings.db_path)
     events_new, calls_new = store.upsert(events, connector_calls)
+    if model_calls:
+        mc_written = store.upsert_gen_ai_model_calls(model_calls)
+        print(f"  AI model calls: {len(model_calls)} fetched, {mc_written} written")
     run_id = store.get_last_run_id()
     store.close()
 
@@ -226,6 +233,7 @@ def cmd_export(run_id: str) -> None:
     dlp_policies = store.fetch_dlp_policies()
     agent_solutions = store.fetch_agent_solutions()
     aad_users = store.fetch_aad_users()
+    model_calls = store.fetch_gen_ai_model_calls()
     az_dep_failures = store.fetch_az_dependency_failures()
     az_exceptions = store.fetch_az_exceptions()
     az_alerts = store.fetch_az_alerts()
@@ -244,6 +252,7 @@ def cmd_export(run_id: str) -> None:
     print(f"Exporting run {run_id[:8]} (last {settings.lookback_days} days)...")
     print(f"  {len(events)} events, {len(connector_calls)} connector calls")
     print(f"  {len(agents)} agents, {len(environments)} environments, {len(publishers)} publishers, {len(dlp_policies)} DLP policies, {len(agent_solutions)} agent-solution links")
+    print(f"  {len(model_calls)} AI model calls")
     print(f"  {len(health_detail)} health rows, {len(crossref_summary)} flagged conversations")
 
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
@@ -253,6 +262,7 @@ def cmd_export(run_id: str) -> None:
                    agents=agents, environments=environments,
                    publishers=publishers, dlp_policies=dlp_policies,
                    agent_solutions=agent_solutions, aad_users=aad_users,
+                   model_calls=model_calls,
                    health_detail=health_detail, crossref_summary=crossref_summary,
                    copilot_usage=copilot_usage, teams_usage=teams_usage)
 

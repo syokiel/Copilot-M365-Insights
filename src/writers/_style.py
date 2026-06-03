@@ -10,14 +10,15 @@ CENTER = Alignment(horizontal="center", vertical="center", wrap_text=False)
 LEFT = Alignment(horizontal="left", vertical="center", wrap_text=False)
 
 
-def write_headers(ws: Worksheet, headers: list[str]) -> None:
+def write_headers(ws: Worksheet, headers: list[str], start_row: int = 1) -> None:
     for col, header in enumerate(headers, 1):
-        cell = ws.cell(row=1, column=col, value=header)
+        cell = ws.cell(row=start_row, column=col, value=header)
         cell.fill = HEADER_FILL
         cell.font = HEADER_FONT
         cell.alignment = CENTER
-    ws.freeze_panes = "A2"
-    ws.row_dimensions[1].height = 20
+    if start_row == 1:
+        ws.freeze_panes = "A2"
+    ws.row_dimensions[start_row].height = 20
 
 
 def apply_row_style(ws: Worksheet, row: int, col_count: int) -> None:

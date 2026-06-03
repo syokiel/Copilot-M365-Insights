@@ -112,6 +112,31 @@ CREATE TABLE IF NOT EXISTS pva_agent_solutions (
     is_managed      INTEGER DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS gen_ai_model_calls (
+    row_id                      TEXT PRIMARY KEY,
+    run_id                      TEXT NOT NULL,
+    timestamp                   TEXT,
+    operation_name              TEXT,
+    gen_ai_operation_name       TEXT,           -- OTel: gen_ai.operation.name (chat, invoke_agent, …)
+    gen_ai_provider_name        TEXT,           -- OTel: gen_ai.provider.name
+    gen_ai_request_model        TEXT,           -- OTel: gen_ai.request.model
+    gen_ai_response_model       TEXT,           -- OTel: gen_ai.response.model
+    gen_ai_usage_input_tokens   INTEGER,        -- OTel: gen_ai.usage.input_tokens
+    gen_ai_usage_output_tokens  INTEGER,        -- OTel: gen_ai.usage.output_tokens
+    gen_ai_agent_id             TEXT,           -- OTel: gen_ai.agent.id
+    gen_ai_agent_name           TEXT,           -- OTel: gen_ai.agent.name
+    gen_ai_environment_id       TEXT,           -- OTel: gen_ai.environment.id
+    session_id                  TEXT,
+    user_id                     TEXT,
+    conversation_id             TEXT,
+    dependency_type             TEXT,
+    target                      TEXT,
+    duration_ms                 REAL,
+    success                     INTEGER,
+    result_code                 TEXT,
+    properties                  TEXT
+);
+
 CREATE TABLE IF NOT EXISTS az_dependency_failures (
     row_id          TEXT PRIMARY KEY,
     operation_id    TEXT,
@@ -215,7 +240,9 @@ CREATE TABLE IF NOT EXISTS aad_users (
     found        INTEGER DEFAULT 1  -- 0 when Graph returned 404 for this ID
 );
 
-CREATE INDEX IF NOT EXISTS idx_agent_sol    ON pva_agent_solutions(solution_id);
+CREATE INDEX IF NOT EXISTS idx_model_calls_conv  ON gen_ai_model_calls(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_model_calls_agent ON gen_ai_model_calls(gen_ai_agent_id);
+CREATE INDEX IF NOT EXISTS idx_agent_sol         ON pva_agent_solutions(solution_id);
 CREATE INDEX IF NOT EXISTS idx_events_conv  ON conversation_events(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_events_run   ON conversation_events(run_id);
 CREATE INDEX IF NOT EXISTS idx_calls_conv   ON connector_calls(conversation_id);
@@ -232,6 +259,11 @@ def _event_row_id(e: dict) -> str:
 
 def _call_row_id(c: dict) -> str:
     key = f"{c.get('Timestamp')}|{c.get('ConversationId')}|{c.get('ConnectorName')}|{c.get('ActionTarget')}"
+    return hashlib.sha1(key.encode()).hexdigest()
+
+
+def _model_call_row_id(r: dict) -> str:
+    key = f"{r.get('Timestamp')}|{r.get('ConversationId')}|{r.get('OperationName')}|{r.get('GenAiRequestModel')}"
     return hashlib.sha1(key.encode()).hexdigest()
 
 
@@ -694,6 +726,56 @@ class SqliteStore:
     def fetch_viva_org_insights(self) -> list[dict]:
         rows = self._conn.execute(
             "SELECT * FROM viva_org_insights ORDER BY metric_date DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def upsert_gen_ai_model_calls(self, rows: list[dict]) -> int:
+        written = 0
+        with self._conn:
+            for r in rows:
+                cur = self._conn.execute(
+                    """
+                    INSERT OR IGNORE INTO gen_ai_model_calls
+                    (row_id, run_id, timestamp, operation_name,
+                     gen_ai_operation_name, gen_ai_provider_name,
+                     gen_ai_request_model, gen_ai_response_model,
+                     gen_ai_usage_input_tokens, gen_ai_usage_output_tokens,
+                     gen_ai_agent_id, gen_ai_agent_name, gen_ai_environment_id,
+                     session_id, user_id, conversation_id,
+                     dependency_type, target, duration_ms, success, result_code, properties)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    """,
+                    (
+                        _model_call_row_id(r),
+                        r.get("_run_id", ""),
+                        str(r.get("Timestamp", "")),
+                        r.get("OperationName", ""),
+                        r.get("GenAiOperationName", ""),
+                        r.get("GenAiProviderName", ""),
+                        r.get("GenAiRequestModel", ""),
+                        r.get("GenAiResponseModel", ""),
+                        r.get("GenAiUsageInputTokens"),
+                        r.get("GenAiUsageOutputTokens"),
+                        r.get("GenAiAgentId", ""),
+                        r.get("GenAiAgentName", ""),
+                        r.get("GenAiEnvironmentId", ""),
+                        r.get("SessionId", ""),
+                        r.get("UserId", ""),
+                        r.get("ConversationId", ""),
+                        r.get("DependencyType", ""),
+                        r.get("Target", ""),
+                        r.get("DurationMs"),
+                        1 if r.get("Success") else 0,
+                        r.get("ResultCode", ""),
+                        r.get("Properties", ""),
+                    ),
+                )
+                written += cur.rowcount
+        return written
+
+    def fetch_gen_ai_model_calls(self) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM gen_ai_model_calls ORDER BY timestamp DESC"
         ).fetchall()
         return [dict(r) for r in rows]
 
