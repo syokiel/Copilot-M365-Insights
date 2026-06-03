@@ -6,6 +6,9 @@ from src.writers._style import apply_row_style, autofit_columns, write_headers
 
 HEADERS = [
     "Conversation ID",
+    "gen_ai.agent.name",
+    "gen_ai.agent.id",
+    "gen_ai.environment.id",
     "Session ID",
     "User ID",
     "Channel",
@@ -16,12 +19,13 @@ HEADERS = [
     "Messages Received",
     "Messages Sent",
     "Topics",
-    "Connector Calls",
+    "Tool Calls",
 ]
 
 
 def _build_conversations(events: list[dict], connector_calls: list[dict]) -> list[dict]:
     by_conv: dict[str, dict] = defaultdict(lambda: {
+        "gen_ai_agent_name": "", "gen_ai_agent_id": "", "gen_ai_environment_id": "",
         "session_id": "", "user_id": "", "channel_id": "",
         "design_mode": False, "timestamps": [],
         "received": 0, "sent": 0, "topics": set(), "connector_calls": 0,
@@ -32,6 +36,9 @@ def _build_conversations(events: list[dict], connector_calls: list[dict]) -> lis
         if not cid:
             continue
         c = by_conv[cid]
+        c["gen_ai_agent_name"] = c["gen_ai_agent_name"] or e.get("GenAiAgentName", "")
+        c["gen_ai_agent_id"] = c["gen_ai_agent_id"] or e.get("GenAiAgentId", "")
+        c["gen_ai_environment_id"] = c["gen_ai_environment_id"] or e.get("GenAiEnvironmentId", "")
         c["session_id"] = c["session_id"] or e.get("SessionId", "")
         c["user_id"] = c["user_id"] or e.get("UserId", "")
         c["channel_id"] = c["channel_id"] or e.get("ChannelId", "")
@@ -71,17 +78,20 @@ def write(ws: Worksheet, events: list[dict], connector_calls: list[dict]) -> Non
             duration = round(delta.total_seconds() / 60, 1)
 
         ws.cell(row=row_idx, column=1, value=c["conversation_id"])
-        ws.cell(row=row_idx, column=2, value=c["session_id"])
-        ws.cell(row=row_idx, column=3, value=c["user_id"])
-        ws.cell(row=row_idx, column=4, value=c["channel_id"])
-        ws.cell(row=row_idx, column=5, value="Yes" if c["design_mode"] else "No")
-        ws.cell(row=row_idx, column=6, value=str(first)[:19] if first else "")
-        ws.cell(row=row_idx, column=7, value=str(last)[:19] if last else "")
-        ws.cell(row=row_idx, column=8, value=duration)
-        ws.cell(row=row_idx, column=9, value=c["received"])
-        ws.cell(row=row_idx, column=10, value=c["sent"])
-        ws.cell(row=row_idx, column=11, value=", ".join(sorted(c["topics"])))
-        ws.cell(row=row_idx, column=12, value=c["connector_calls"])
+        ws.cell(row=row_idx, column=2, value=c["gen_ai_agent_name"])
+        ws.cell(row=row_idx, column=3, value=c["gen_ai_agent_id"])
+        ws.cell(row=row_idx, column=4, value=c["gen_ai_environment_id"])
+        ws.cell(row=row_idx, column=5, value=c["session_id"])
+        ws.cell(row=row_idx, column=6, value=c["user_id"])
+        ws.cell(row=row_idx, column=7, value=c["channel_id"])
+        ws.cell(row=row_idx, column=8, value="Yes" if c["design_mode"] else "No")
+        ws.cell(row=row_idx, column=9, value=str(first)[:19] if first else "")
+        ws.cell(row=row_idx, column=10, value=str(last)[:19] if last else "")
+        ws.cell(row=row_idx, column=11, value=duration)
+        ws.cell(row=row_idx, column=12, value=c["received"])
+        ws.cell(row=row_idx, column=13, value=c["sent"])
+        ws.cell(row=row_idx, column=14, value=", ".join(sorted(c["topics"])))
+        ws.cell(row=row_idx, column=15, value=c["connector_calls"])
         apply_row_style(ws, row_idx, len(HEADERS))
 
     autofit_columns(ws, HEADERS)

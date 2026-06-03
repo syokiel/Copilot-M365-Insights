@@ -10,15 +10,19 @@ _CONVERSATION_EVENTS_KQL = """
 AppEvents
 | extend props = parse_json(Properties)
 | project
-    Timestamp      = TimeGenerated,
-    EventName      = Name,
+    Timestamp              = TimeGenerated,
+    EventName              = Name,
+    GenAiOperationName     = "invoke_agent",
+    GenAiAgentId           = tostring(props["gen_ai.agent.id"]),
+    GenAiAgentName         = tostring(props["gen_ai.agent.name"]),
+    GenAiEnvironmentId     = tostring(props["gen_ai.environment.id"]),
     SessionId,
     UserId,
-    ConversationId = tostring(props["conversationId"]),
-    ChannelId      = tostring(props["channelId"]),
-    DesignMode     = tobool(props["DesignMode"]),
-    TopicName      = tostring(props["TopicName"]),
-    Text           = tostring(props["text"]),
+    ConversationId         = tostring(props["conversationId"]),
+    ChannelId              = tostring(props["channelId"]),
+    DesignMode             = tobool(props["DesignMode"]),
+    TopicName              = tostring(props["TopicName"]),
+    Text                   = tostring(props["text"]),
     Properties
 | order by Timestamp desc
 """
@@ -28,14 +32,18 @@ AppDependencies
 | where DependencyType == "Connector"
 | extend props = parse_json(Properties)
 | project
-    Timestamp      = TimeGenerated,
-    ConnectorName  = Name,
-    ActionTarget   = Target,
+    Timestamp              = TimeGenerated,
+    ConnectorName          = Name,
+    GenAiOperationName     = "execute_tool",
+    GenAiAgentId           = tostring(props["gen_ai.agent.id"]),
+    GenAiAgentName         = tostring(props["gen_ai.agent.name"]),
+    GenAiEnvironmentId     = tostring(props["gen_ai.environment.id"]),
+    ActionTarget           = Target,
     SessionId,
     UserId,
-    ConversationId = tostring(props["conversationId"]),
-    ChannelId      = tostring(props["channelId"]),
-    DesignMode     = tobool(props["DesignMode"]),
+    ConversationId         = tostring(props["conversationId"]),
+    ChannelId              = tostring(props["channelId"]),
+    DesignMode             = tobool(props["DesignMode"]),
     DurationMs,
     Success,
     ResultCode,

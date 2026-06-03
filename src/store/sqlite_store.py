@@ -15,35 +15,43 @@ CREATE TABLE IF NOT EXISTS sync_runs (
 );
 
 CREATE TABLE IF NOT EXISTS conversation_events (
-    row_id          TEXT PRIMARY KEY,
-    run_id          TEXT NOT NULL,
-    timestamp       TEXT,
-    event_name      TEXT,
-    session_id      TEXT,
-    user_id         TEXT,
-    conversation_id TEXT,
-    channel_id      TEXT,
-    design_mode     INTEGER,
-    topic_name      TEXT,
-    text            TEXT,
-    properties      TEXT
+    row_id                 TEXT PRIMARY KEY,
+    run_id                 TEXT NOT NULL,
+    timestamp              TEXT,
+    event_name             TEXT,
+    gen_ai_operation_name  TEXT,           -- OTel: gen_ai.operation.name (invoke_agent)
+    gen_ai_agent_id        TEXT,           -- OTel: gen_ai.agent.id
+    gen_ai_agent_name      TEXT,           -- OTel: gen_ai.agent.name
+    gen_ai_environment_id  TEXT,           -- OTel: gen_ai.environment.id
+    session_id             TEXT,
+    user_id                TEXT,
+    conversation_id        TEXT,
+    channel_id             TEXT,
+    design_mode            INTEGER,
+    topic_name             TEXT,
+    text                   TEXT,
+    properties             TEXT
 );
 
 CREATE TABLE IF NOT EXISTS connector_calls (
-    row_id          TEXT PRIMARY KEY,
-    run_id          TEXT NOT NULL,
-    timestamp       TEXT,
-    connector_name  TEXT,
-    action_target   TEXT,
-    session_id      TEXT,
-    user_id         TEXT,
-    conversation_id TEXT,
-    channel_id      TEXT,
-    design_mode     INTEGER,
-    success         INTEGER,
-    result_code     TEXT,
-    duration_ms     REAL,
-    properties      TEXT
+    row_id                 TEXT PRIMARY KEY,
+    run_id                 TEXT NOT NULL,
+    timestamp              TEXT,
+    connector_name         TEXT,           -- OTel: gen_ai.tool.name
+    gen_ai_operation_name  TEXT,           -- OTel: gen_ai.operation.name (execute_tool)
+    gen_ai_agent_id        TEXT,           -- OTel: gen_ai.agent.id
+    gen_ai_agent_name      TEXT,           -- OTel: gen_ai.agent.name
+    gen_ai_environment_id  TEXT,           -- OTel: gen_ai.environment.id
+    action_target          TEXT,
+    session_id             TEXT,
+    user_id                TEXT,
+    conversation_id        TEXT,
+    channel_id             TEXT,
+    design_mode            INTEGER,
+    success                INTEGER,
+    result_code            TEXT,
+    duration_ms            REAL,
+    properties             TEXT
 );
 
 CREATE TABLE IF NOT EXISTS pva_agents (
@@ -274,6 +282,27 @@ class SqliteStore:
             if col not in agent_cols:
                 self._conn.execute(f"ALTER TABLE pva_agents ADD COLUMN {col} {typedef}")
 
+        # Add OTel GenAI attribute columns to conversation_events and connector_calls
+        event_cols = {row[1] for row in self._conn.execute("PRAGMA table_info(conversation_events)").fetchall()}
+        for col, typedef in [
+            ("gen_ai_operation_name", "TEXT"),
+            ("gen_ai_agent_id",       "TEXT"),
+            ("gen_ai_agent_name",     "TEXT"),
+            ("gen_ai_environment_id", "TEXT"),
+        ]:
+            if col not in event_cols:
+                self._conn.execute(f"ALTER TABLE conversation_events ADD COLUMN {col} {typedef}")
+
+        call_cols = {row[1] for row in self._conn.execute("PRAGMA table_info(connector_calls)").fetchall()}
+        for col, typedef in [
+            ("gen_ai_operation_name", "TEXT"),
+            ("gen_ai_agent_id",       "TEXT"),
+            ("gen_ai_agent_name",     "TEXT"),
+            ("gen_ai_environment_id", "TEXT"),
+        ]:
+            if col not in call_cols:
+                self._conn.execute(f"ALTER TABLE connector_calls ADD COLUMN {col} {typedef}")
+
     def upsert(self, events: list[dict], connector_calls: list[dict]) -> tuple[int, int]:
         """Insert new records, skip duplicates. Returns (new_events, new_calls)."""
         run_id = str(uuid.uuid4())
@@ -288,14 +317,20 @@ class SqliteStore:
                 cur = self._conn.execute(
                     """
                     INSERT OR IGNORE INTO conversation_events
-                    (row_id, run_id, timestamp, event_name, session_id, user_id,
-                     conversation_id, channel_id, design_mode, topic_name, text, properties)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                    (row_id, run_id, timestamp, event_name,
+                     gen_ai_operation_name, gen_ai_agent_id, gen_ai_agent_name, gen_ai_environment_id,
+                     session_id, user_id, conversation_id, channel_id,
+                     design_mode, topic_name, text, properties)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                     """,
                     (
                         row_id, run_id,
                         str(e.get("Timestamp", "")),
                         e.get("EventName", ""),
+                        e.get("GenAiOperationName", ""),
+                        e.get("GenAiAgentId", ""),
+                        e.get("GenAiAgentName", ""),
+                        e.get("GenAiEnvironmentId", ""),
                         e.get("SessionId", ""),
                         e.get("UserId", ""),
                         e.get("ConversationId", ""),
@@ -313,15 +348,20 @@ class SqliteStore:
                 cur = self._conn.execute(
                     """
                     INSERT OR IGNORE INTO connector_calls
-                    (row_id, run_id, timestamp, connector_name, action_target, session_id,
-                     user_id, conversation_id, channel_id, design_mode, success,
-                     result_code, duration_ms, properties)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    (row_id, run_id, timestamp, connector_name,
+                     gen_ai_operation_name, gen_ai_agent_id, gen_ai_agent_name, gen_ai_environment_id,
+                     action_target, session_id, user_id, conversation_id, channel_id,
+                     design_mode, success, result_code, duration_ms, properties)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                     """,
                     (
                         row_id, run_id,
                         str(c.get("Timestamp", "")),
                         c.get("ConnectorName", ""),
+                        c.get("GenAiOperationName", ""),
+                        c.get("GenAiAgentId", ""),
+                        c.get("GenAiAgentName", ""),
+                        c.get("GenAiEnvironmentId", ""),
                         c.get("ActionTarget", ""),
                         c.get("SessionId", ""),
                         c.get("UserId", ""),
@@ -700,6 +740,10 @@ def _to_event_dict(row: sqlite3.Row) -> dict:
     return {
         "Timestamp": _parse_ts(row["timestamp"]),
         "EventName": row["event_name"],
+        "GenAiOperationName": row["gen_ai_operation_name"],
+        "GenAiAgentId": row["gen_ai_agent_id"],
+        "GenAiAgentName": row["gen_ai_agent_name"],
+        "GenAiEnvironmentId": row["gen_ai_environment_id"],
         "SessionId": row["session_id"],
         "UserId": row["user_id"],
         "ConversationId": row["conversation_id"],
@@ -715,6 +759,10 @@ def _to_call_dict(row: sqlite3.Row) -> dict:
     return {
         "Timestamp": _parse_ts(row["timestamp"]),
         "ConnectorName": row["connector_name"],
+        "GenAiOperationName": row["gen_ai_operation_name"],
+        "GenAiAgentId": row["gen_ai_agent_id"],
+        "GenAiAgentName": row["gen_ai_agent_name"],
+        "GenAiEnvironmentId": row["gen_ai_environment_id"],
         "ActionTarget": row["action_target"],
         "SessionId": row["session_id"],
         "UserId": row["user_id"],
