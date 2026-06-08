@@ -91,6 +91,25 @@ class GraphFetcher:
             for r in rows
         ]
 
+    def fetch_all_user_ids(self, max_users: int = 999) -> list[str]:
+        """
+        Page through the tenant user directory and return Azure AD object IDs.
+        Used as a fallback source for Viva when no IDs are available from the
+        local store (e.g. no conversation events or agent owner data yet).
+        """
+        headers = self._headers()
+        ids: list[str] = []
+        url: str = f"{_GRAPH_BASE}/users"
+        params: dict = {"$select": "id", "$top": min(max_users, 999)}
+        while url and len(ids) < max_users:
+            resp = requests.get(url, headers=headers, params=params, timeout=30)
+            resp.raise_for_status()
+            data = resp.json()
+            ids.extend(u["id"] for u in data.get("value", []) if u.get("id"))
+            url = data.get("@odata.nextLink", "")
+            params = {}
+        return ids[:max_users]
+
     def resolve_users(self, user_ids: list[str]) -> list[dict]:
         """
         Resolve Azure AD object IDs to user profiles.

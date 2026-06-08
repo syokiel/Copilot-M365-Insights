@@ -18,6 +18,11 @@ class DataSourceConfig:
     tenant_id: str = ""
     client_id: str = ""
     client_secret: str = ""
+    # Optional: set {PREFIX}_CLI_ACCOUNT=user@domain.com to use a specific account
+    # for CLI auth.  Datasources with different cli_account values get independent
+    # credentials even within the same tenant — each prompts separately if needed.
+    # Datasources sharing the same (tenant_id, cli_account) reuse one credential.
+    cli_account: str = ""
     extras: dict = field(default_factory=dict)
 
 
@@ -78,9 +83,10 @@ def load_datasource_configs() -> list[DataSourceConfig]:
         except ValueError:
             auth = default_auth
 
-        tenant = os.getenv(f"{prefix}_TENANT_ID", global_tenant)
-        client = os.getenv(f"{prefix}_CLIENT_ID", global_client)
-        secret = os.getenv(f"{prefix}_CLIENT_SECRET", global_secret)
+        tenant      = os.getenv(f"{prefix}_TENANT_ID",   global_tenant)
+        client      = os.getenv(f"{prefix}_CLIENT_ID",   global_client)
+        secret      = os.getenv(f"{prefix}_CLIENT_SECRET", global_secret)
+        cli_account = os.getenv(f"{prefix}_CLI_ACCOUNT", "")
 
         extras: dict[str, str] = {}
         for field_name, env_keys in extras_map.items():
@@ -97,6 +103,7 @@ def load_datasource_configs() -> list[DataSourceConfig]:
             tenant_id=tenant,
             client_id=client,
             client_secret=secret,
+            cli_account=cli_account,
             extras=extras,
         ))
     return configs

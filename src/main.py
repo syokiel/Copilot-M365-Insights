@@ -226,8 +226,21 @@ def cmd_sync() -> str:
         # ── Microsoft Viva ───────────────────────────────────────────────────
         elif ds.key == "VIVA":
             from src.fetchers.viva import VivaFetcher
-            fetcher         = VivaFetcher(credential=credential)
-            known_user_ids  = store.fetch_known_user_ids()
+            fetcher        = VivaFetcher(credential=credential)
+            known_user_ids = store.fetch_known_user_ids()
+            if not known_user_ids:
+                # No user IDs from conversation events or AAD cache — fall back
+                # to a full tenant user listing from Graph.
+                graph_ds = get_datasource(ds_configs, "GRAPH")
+                if graph_ds:
+                    from src.fetchers.graph import GraphFetcher
+                    try:
+                        known_user_ids = GraphFetcher(
+                            credential=auth.get_credential(graph_ds)
+                        ).fetch_all_user_ids()
+                        print(f"  resolved {len(known_user_ids)} user IDs from Graph directory")
+                    except Exception as e:
+                        print(f"  WARNING: Graph user listing failed: {e}")
             for label, fetch_fn, upsert_fn in [
                 ("person insights",
                  lambda: fetcher.fetch_person_insights(known_user_ids),

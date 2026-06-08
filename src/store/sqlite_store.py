@@ -845,12 +845,23 @@ class SqliteStore:
         return {row["user_id"]: dict(row) for row in rows}
 
     def fetch_known_user_ids(self) -> list[str]:
-        """Return distinct non-empty user IDs from non-design-mode conversation events."""
-        rows = self._conn.execute(
+        """
+        Return distinct Azure AD user object IDs from all available local sources:
+          1. Non-design-mode conversation events (OTel)
+          2. Already-resolved AAD user cache (agent owner lookups, etc.)
+        """
+        ids: set[str] = set()
+        for sql in [
             "SELECT DISTINCT user_id FROM conversation_events "
-            "WHERE user_id IS NOT NULL AND user_id != '' AND design_mode = 0"
-        ).fetchall()
-        return [row["user_id"] for row in rows]
+            "WHERE user_id IS NOT NULL AND user_id != '' AND design_mode = 0",
+            "SELECT DISTINCT user_id FROM aad_users "
+            "WHERE user_id IS NOT NULL AND user_id != ''",
+        ]:
+            try:
+                ids.update(row["user_id"] for row in self._conn.execute(sql).fetchall())
+            except Exception:
+                pass
+        return list(ids)
 
     def compute_kpi_snapshot(self, lookback_days: int, total_licenses: int = 0) -> dict:
         """Compute KPI values from current DB state and return as a dict."""

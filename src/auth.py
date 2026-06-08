@@ -42,13 +42,23 @@ class AuthManager:
                 )
             return self._sp[key]
 
-        tid = ds.tenant_id or ""
-        if tid not in self._cli:
-            self._cli[tid] = ChainedTokenCredential(
+        # Cache key: (tenant_id, cli_account).
+        # Datasources sharing the same pair reuse one credential — az login /
+        # browser prompts at most once per unique (tenant, account) combination.
+        # Set {PREFIX}_CLI_ACCOUNT=user@domain.com to give a datasource its own
+        # independent credential when a different account is required.
+        tid     = ds.tenant_id   or ""
+        account = ds.cli_account or ""
+        key = (tid, account)
+        if key not in self._cli:
+            self._cli[key] = ChainedTokenCredential(
                 AzureCliCredential(tenant_id=tid or None),
-                InteractiveBrowserCredential(tenant_id=tid or None),
+                InteractiveBrowserCredential(
+                    tenant_id=tid or None,
+                    login_hint=account or None,
+                ),
             )
-        return self._cli[tid]
+        return self._cli[key]
 
     def logs_client(self, ds: DataSourceConfig) -> LogsQueryClient:
         return LogsQueryClient(self.get_credential(ds))
@@ -70,11 +80,11 @@ class AuthManager:
         Within each group, definition order from datasources._DEFS is preserved.
         """
         sp = [c for c in configs if c.auth_method == AuthMethod.SP]
-        cli_by_tenant: dict[str, list[DataSourceConfig]] = {}
+        cli_by_account: dict[tuple[str, str], list[DataSourceConfig]] = {}
         for c in configs:
             if c.auth_method == AuthMethod.CLI:
-                cli_by_tenant.setdefault(c.tenant_id, []).append(c)
-        cli = [cfg for grp in cli_by_tenant.values() for cfg in grp]
+                cli_by_account.setdefault((c.tenant_id or "", c.cli_account or ""), []).append(c)
+        cli = [cfg for grp in cli_by_account.values() for cfg in grp]
         return sp + cli
 
 
