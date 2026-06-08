@@ -96,11 +96,14 @@ class Settings:
     def validate(self) -> None:
         if not self.azure_tenant_id:
             raise EnvironmentError("Missing required env var: AZURE_TENANT_ID")
-        # If a service principal is partially configured, both parts are required
+        # Global SP credentials must be fully set or fully absent.
+        # Per-datasource overrides ({PREFIX}_CLIENT_ID / {PREFIX}_CLIENT_SECRET)
+        # are validated independently by config.datasources.
         if bool(self.azure_client_id) != bool(self.azure_client_secret):
             missing = "AZURE_CLIENT_SECRET" if self.azure_client_id else "AZURE_CLIENT_ID"
             raise EnvironmentError(
-                f"Partial service principal config — set {missing} or remove both to use CLI auth"
+                f"Partial global service principal config — set {missing} "
+                "or remove both to use CLI auth (or set per-datasource credentials instead)"
             )
 
 
