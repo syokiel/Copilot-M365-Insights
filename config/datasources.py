@@ -24,6 +24,8 @@ class DataSourceConfig:
     # Datasources sharing the same (tenant_id, cli_account) reuse one credential.
     cli_account: str = ""
     extras: dict = field(default_factory=dict)
+    # Set {PREFIX}_ENABLED=false in your .env to skip a datasource entirely.
+    enabled: bool = True
 
 
 # Definition order determines run order within the same auth bucket.
@@ -96,6 +98,9 @@ def load_datasource_configs() -> list[DataSourceConfig]:
                     extras[field_name] = val
                     break
 
+        enabled_raw = os.getenv(f"{prefix}_ENABLED", "true").strip().lower()
+        enabled = enabled_raw not in ("false", "0", "no", "off")
+
         configs.append(DataSourceConfig(
             key=prefix,
             label=label,
@@ -105,6 +110,7 @@ def load_datasource_configs() -> list[DataSourceConfig]:
             client_secret=secret,
             cli_account=cli_account,
             extras=extras,
+            enabled=enabled,
         ))
     return configs
 

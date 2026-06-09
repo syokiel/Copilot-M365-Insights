@@ -17,6 +17,39 @@ from src.store.sqlite_store import SqliteStore
 from src.writers.workbook_writer import build_workbook
 
 
+def cmd_import_viva(report_dir: str) -> None:
+    """Import Copilot Studio analytics CSV reports into the local SQLite DB."""
+    settings.validate()
+    from src.fetchers.viva_report import VivaReportImporter
+    importer = VivaReportImporter(report_dir)
+    store    = SqliteStore(settings.db_path)
+
+    print(f"Importing Viva reports from: {report_dir}")
+    for label, fetch_fn, upsert_fn in [
+        ("session metrics",          importer.fetch_session_metrics,           store.upsert_viva_cs_session_metrics),
+        ("topic metrics",            importer.fetch_topic_metrics,             store.upsert_viva_cs_topic_metrics),
+        ("knowledge source metrics", importer.fetch_knowledge_source_metrics,  store.upsert_viva_cs_knowledge_source_metrics),
+        ("autonomous metrics",       importer.fetch_autonomous_metrics,        store.upsert_viva_cs_autonomous_metrics),
+        ("autonomous trigger metrics", importer.fetch_autonomous_trigger_metrics, store.upsert_viva_cs_autonomous_trigger_metrics),
+        ("action metrics",           importer.fetch_action_metrics,            store.upsert_viva_cs_action_metrics),
+        ("copilot agents",           importer.fetch_copilot_agents,            store.upsert_viva_cs_copilot_agents),
+        ("weekly active users",      importer.fetch_weekly_active_users,       store.upsert_viva_cs_weekly_active_users),
+        ("extended metadata",        importer.fetch_extended_metadata,         store.upsert_viva_cs_extended_metadata),
+    ]:
+        try:
+            items = fetch_fn()
+            if items:
+                written = upsert_fn(items)
+                print(f"  {label}: {len(items)} rows, {written} written")
+            else:
+                print(f"  {label}: file not found, skipped")
+        except Exception as e:
+            print(f"  WARNING: {label} failed: {e}")
+
+    store.close()
+    print(f"Done. DB: {settings.db_path}")
+
+
 def cmd_sync() -> str:
     """Fetch from all configured datasources and upsert into SQLite. Returns run_id."""
     settings.validate()
@@ -31,6 +64,9 @@ def cmd_sync() -> str:
     envs_fetched = False
 
     for ds in ordered:
+        if not ds.enabled:
+            print(f"\n[{ds.label}] SKIPPED ({ds.key}_ENABLED=false)")
+            continue
         print(f"\n[{ds.label}] auth={ds.auth_method.value}")
         credential = auth.get_credential(ds)
 
@@ -199,6 +235,24 @@ def cmd_sync() -> str:
                 ("Teams activity",
                  lambda: fetcher.fetch_teams_activity(settings.lookback_days),
                  store.upsert_teams_usage),
+                ("Copilot user count summary",
+                 lambda: fetcher.fetch_copilot_user_count_summary(settings.lookback_days),
+                 store.upsert_copilot_count_summary),
+                ("Copilot user count trend",
+                 lambda: fetcher.fetch_copilot_user_count_trend(settings.lookback_days),
+                 store.upsert_copilot_count_trend),
+                ("Copilot packages",
+                 fetcher.fetch_copilot_packages,
+                 store.upsert_copilot_packages),
+                ("O365 active user detail",
+                 lambda: fetcher.fetch_o365_active_user_detail(settings.lookback_days),
+                 store.upsert_o365_active_users),
+                ("M365 app user detail",
+                 lambda: fetcher.fetch_m365_app_user_detail(settings.lookback_days),
+                 store.upsert_m365_app_users),
+                ("Graph request usage",
+                 lambda: fetcher.fetch_graph_request_usage(settings.lookback_days),
+                 store.upsert_graph_request_usage),
             ]:
                 try:
                     items   = fetch_fn()
@@ -295,6 +349,32 @@ def cmd_sync() -> str:
             except Exception as e:
                 print(f"  WARNING: secure score failed: {e}")
 
+    # ── Viva CS auto-import ───────────────────────────────────────────────────
+    if settings.viva_cs_report_dir:
+        print(f"\n[Viva CS] importing from {settings.viva_cs_report_dir}")
+        from src.fetchers.viva_report import VivaReportImporter
+        importer = VivaReportImporter(settings.viva_cs_report_dir)
+        for label, fetch_fn, upsert_fn in [
+            ("session metrics",            importer.fetch_session_metrics,             store.upsert_viva_cs_session_metrics),
+            ("topic metrics",              importer.fetch_topic_metrics,               store.upsert_viva_cs_topic_metrics),
+            ("knowledge source metrics",   importer.fetch_knowledge_source_metrics,    store.upsert_viva_cs_knowledge_source_metrics),
+            ("autonomous metrics",         importer.fetch_autonomous_metrics,          store.upsert_viva_cs_autonomous_metrics),
+            ("autonomous trigger metrics", importer.fetch_autonomous_trigger_metrics,  store.upsert_viva_cs_autonomous_trigger_metrics),
+            ("action metrics",             importer.fetch_action_metrics,              store.upsert_viva_cs_action_metrics),
+            ("copilot agents",             importer.fetch_copilot_agents,              store.upsert_viva_cs_copilot_agents),
+            ("weekly active users",        importer.fetch_weekly_active_users,         store.upsert_viva_cs_weekly_active_users),
+            ("extended metadata",          importer.fetch_extended_metadata,           store.upsert_viva_cs_extended_metadata),
+        ]:
+            try:
+                items = fetch_fn()
+                if items:
+                    written = upsert_fn(items)
+                    print(f"  {label}: {len(items)} rows, {written} written")
+                else:
+                    print(f"  {label}: file not found, skipped")
+            except Exception as e:
+                print(f"  WARNING: {label} failed: {e}")
+
     # ── KPI snapshot ─────────────────────────────────────────────────────────
     print("\n[KPI Snapshot]")
     try:
@@ -335,8 +415,19 @@ def cmd_export(run_id: str) -> None:
     az_dep_failures    = store.fetch_az_dependency_failures()
     az_exceptions      = store.fetch_az_exceptions()
     az_alerts          = store.fetch_az_alerts()
-    copilot_usage      = store.fetch_copilot_usage()
-    teams_usage        = store.fetch_teams_usage()
+    copilot_usage           = store.fetch_copilot_usage()
+    teams_usage             = store.fetch_teams_usage()
+    viva_person_insights       = store.fetch_viva_person_insights()
+    viva_cs_session_metrics       = store.fetch_viva_cs_session_metrics()
+    viva_cs_topic_metrics         = store.fetch_viva_cs_topic_metrics()
+    viva_cs_weekly_active_users   = store.fetch_viva_cs_weekly_active_users()
+    viva_cs_autonomous_metrics    = store.fetch_viva_cs_autonomous_metrics()
+    viva_cs_copilot_agents        = store.fetch_viva_cs_copilot_agents()
+    copilot_count_summary         = store.fetch_copilot_count_summary()
+    copilot_count_trend           = store.fetch_copilot_count_trend()
+    copilot_packages              = store.fetch_copilot_packages()
+    o365_active_users             = store.fetch_o365_active_users()
+    m365_app_users                = store.fetch_m365_app_users()
     store.close()
 
     health_detail, crossref_summary = build_crossref(
@@ -353,6 +444,11 @@ def cmd_export(run_id: str) -> None:
           f"{len(publishers)} publishers, {len(dlp_policies)} DLP policies, "
           f"{len(agent_solutions)} agent-solution links")
     print(f"  {len(model_calls)} AI model calls")
+    print(f"  {len(viva_person_insights)} Viva person insight rows")
+    print(f"  {len(viva_cs_session_metrics)} Viva session metric rows, "
+          f"{len(viva_cs_topic_metrics)} topic rows, "
+          f"{len(viva_cs_weekly_active_users)} WAU rows, "
+          f"{len(viva_cs_autonomous_metrics)} autonomous rows")
     print(f"  {len(health_detail)} health rows, {len(crossref_summary)} flagged conversations")
 
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
@@ -367,6 +463,17 @@ def cmd_export(run_id: str) -> None:
         health_detail=health_detail, crossref_summary=crossref_summary,
         copilot_usage=copilot_usage, teams_usage=teams_usage,
         kpi_snapshots=kpi_snapshots,
+        viva_person_insights=viva_person_insights,
+        viva_cs_session_metrics=viva_cs_session_metrics,
+        viva_cs_topic_metrics=viva_cs_topic_metrics,
+        viva_cs_weekly_active_users=viva_cs_weekly_active_users,
+        viva_cs_autonomous_metrics=viva_cs_autonomous_metrics,
+        viva_cs_copilot_agents=viva_cs_copilot_agents,
+        copilot_count_summary=copilot_count_summary,
+        copilot_count_trend=copilot_count_trend,
+        copilot_packages=copilot_packages,
+        o365_active_users=o365_active_users,
+        m365_app_users=m365_app_users,
     )
 
 
@@ -387,9 +494,12 @@ def main() -> None:
         run_id = cmd_sync()
         print()
         cmd_export(run_id)
+    elif command == "import-viva":
+        report_dir = sys.argv[2] if len(sys.argv) > 2 else "."
+        cmd_import_viva(report_dir)
     else:
         print(f"Unknown command: {command}")
-        print("Usage: python -m src.main [sync|export|all]")
+        print("Usage: python -m src.main [sync|export|all|import-viva <dir>]")
         sys.exit(1)
 
 

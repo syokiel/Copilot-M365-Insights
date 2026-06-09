@@ -7,7 +7,17 @@ from openpyxl.worksheet.worksheet import Worksheet
 from src.writers._style import HEADER_FILL, HEADER_FONT, LEFT, autofit_columns
 
 
-def write(ws: Worksheet, events: list[dict], connector_calls: list[dict], model_calls: list[dict] = [], kpi_snapshot: dict | None = None) -> None:
+def write(
+    ws: Worksheet,
+    events: list[dict],
+    connector_calls: list[dict],
+    model_calls: list[dict] = [],
+    kpi_snapshot: dict | None = None,
+    viva_cs_sessions: list[dict] | None = None,
+    viva_cs_wau: list[dict] | None = None,
+    viva_cs_autonomous: list[dict] | None = None,
+    viva_cs_agents: dict[str, dict] | None = None,
+) -> None:
     prod_events = [e for e in events if not e.get("DesignMode")]
     prod_connectors = [c for c in connector_calls if not c.get("DesignMode")]
 
@@ -101,6 +111,62 @@ def write(ws: Worksheet, events: list[dict], connector_calls: list[dict], model_
             ("Total Conversations",  kpi_snapshot.get("total_conversations")),
             ("Agent Adopters",       kpi_snapshot.get("agent_adopters")),
             ("Agent Adoption %",     pct(kpi_snapshot.get("agent_adoption_pct"))),
+        ]
+
+    # ── Viva CS (Copilot Studio analytics) ────────────────────────────────────
+    rows.append((None, None))
+    rows.append(("── Viva CS (Copilot Studio) ──────────────────", None))
+
+    if viva_cs_sessions:
+        total_sess     = sum(r.get("total_sessions")    or 0 for r in viva_cs_sessions)
+        total_engaged  = sum(r.get("engaged_sessions")  or 0 for r in viva_cs_sessions)
+        total_resolved = sum(r.get("resolved_sessions") or 0 for r in viva_cs_sessions)
+        total_escalated= sum(r.get("escalated_sessions")or 0 for r in viva_cs_sessions)
+        total_abandoned= sum(r.get("abandoned_sessions")or 0 for r in viva_cs_sessions)
+        total_csat_n   = sum(r.get("csat_responses")    or 0 for r in viva_cs_sessions)
+
+        # Weighted avg CSAT
+        csat_score = 0.0
+        if total_csat_n:
+            for r in viva_cs_sessions:
+                n = r.get("csat_responses") or 0
+                if n:
+                    s = (
+                        (r.get("csat_1") or 0) * 1 + (r.get("csat_2") or 0) * 2 +
+                        (r.get("csat_3") or 0) * 3 + (r.get("csat_4") or 0) * 4 +
+                        (r.get("csat_5") or 0) * 5
+                    )
+                    csat_score += s
+            csat_score = round(csat_score / total_csat_n, 2)
+
+        pct = lambda v, d: f"{v/d*100:.1f}%" if d else "—"  # noqa: E731
+
+        rows += [
+            ("Catalog agents",      len(viva_cs_agents) if viva_cs_agents else "—"),
+            ("Total sessions",      total_sess),
+            ("Engaged sessions",    f"{total_engaged}  ({pct(total_engaged, total_sess)})"),
+            ("Resolved sessions",   f"{total_resolved}  ({pct(total_resolved, total_sess)})"),
+            ("Escalated sessions",  f"{total_escalated}  ({pct(total_escalated, total_sess)})"),
+            ("Abandoned sessions",  f"{total_abandoned}  ({pct(total_abandoned, total_sess)})"),
+            ("CSAT responses",      total_csat_n),
+            ("Avg CSAT score",      csat_score if total_csat_n else "—"),
+        ]
+    else:
+        rows.append(("  No Copilot Studio session data imported", None))
+
+    if viva_cs_wau:
+        peak = max(viva_cs_wau, key=lambda r: r.get("active_user_count") or 0)
+        rows += [
+            ("Peak weekly active users", peak.get("active_user_count")),
+            ("Peak WAU week",           peak.get("start_date", "—")),
+        ]
+
+    if viva_cs_autonomous:
+        total_runs  = sum(r.get("total_runs")      or 0 for r in viva_cs_autonomous)
+        total_succ  = sum(r.get("successful_runs") or 0 for r in viva_cs_autonomous)
+        rows += [
+            ("Autonomous runs (total)",   total_runs),
+            ("Autonomous success rate",   f"{total_succ/total_runs*100:.1f}%" if total_runs else "—"),
         ]
 
     headers = ["Metric", "Value"]

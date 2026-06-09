@@ -55,6 +55,10 @@ class Settings:
     # Optional: total Copilot license count for activation rate KPI.
     # Not derivable from usage data — set from your admin centre licence count.
     total_licenses: int = 0
+    # Viva CS (Copilot Studio) analytics CSV export folder.
+    # Set VIVA_CS_REPORT_DIR to the folder containing the exported CSVs and
+    # they will be imported automatically on every sync/all run.
+    viva_cs_report_dir: str = ""
     # MCP server (HTTP deployment)
     mcp_tenant_id: str = ""
     mcp_app_id_uri: str = ""
@@ -84,6 +88,7 @@ class Settings:
         raw_ids = os.getenv("POWERPLATFORM_AGENT_ENV_IDS", "")
         self.agent_env_ids = {i.strip() for i in raw_ids.split(",") if i.strip()} if raw_ids else set()
         self.total_licenses = int(os.getenv("TOTAL_LICENSES", str(self.total_licenses)))
+        self.viva_cs_report_dir = os.getenv("VIVA_CS_REPORT_DIR", self.viva_cs_report_dir).strip()
         self.mcp_tenant_id = os.getenv("MCP_TENANT_ID", self.mcp_tenant_id)
         self.mcp_app_id_uri = os.getenv("MCP_APP_ID_URI", self.mcp_app_id_uri)
         self.mcp_api_key = os.getenv("MCP_API_KEY", self.mcp_api_key)

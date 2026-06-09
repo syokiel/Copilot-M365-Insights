@@ -1,15 +1,16 @@
 """
 Microsoft Graph Reports API fetcher — M365 Copilot usage, Teams activity,
-and Azure AD user directory resolution.
+Copilot admin catalog, O365/M365 app usage, and Azure AD user resolution.
 """
 import csv
 import io
+import json
 
 import requests
 from azure.core.credentials import TokenCredential
 
-_GRAPH_BASE  = "https://graph.microsoft.com/v1.0"
-_GRAPH_SCOPE = "https://graph.microsoft.com/.default"
+_GRAPH_BASE   = "https://graph.microsoft.com/v1.0"
+_GRAPH_SCOPE  = "https://graph.microsoft.com/.default"
 
 
 def _period(days: int) -> str:
@@ -44,6 +45,29 @@ class GraphFetcher:
         resp.raise_for_status()
         text = resp.content.decode("utf-8-sig")
         return list(csv.DictReader(io.StringIO(text)))
+
+    def _fetch_json(self, path: str, params: dict | None = None) -> dict:
+        resp = requests.get(
+            f"{_GRAPH_BASE}{path}",
+            headers={**self._headers(), "Accept": "application/json"},
+            params=params or {},
+            timeout=60,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def _fetch_json_paged(self, path: str) -> list[dict]:
+        """Follow @odata.nextLink to collect all pages."""
+        items: list[dict] = []
+        url: str | None = f"{_GRAPH_BASE}{path}"
+        hdrs = {**self._headers(), "Accept": "application/json"}
+        while url:
+            resp = requests.get(url, headers=hdrs, timeout=60)
+            resp.raise_for_status()
+            data = resp.json()
+            items.extend(data.get("value", []))
+            url = data.get("@odata.nextLink")
+        return items
 
     def fetch_copilot_usage(self, lookback_days: int = 30) -> list[dict]:
         """Per-user M365 Copilot prompt activity across all surfaces."""
@@ -90,6 +114,188 @@ class GraphFetcher:
             }
             for r in rows
         ]
+
+    # ── Copilot user count summary ────────────────────────────────────────────
+
+    def fetch_copilot_user_count_summary(self, lookback_days: int = 30) -> list[dict]:
+        """
+        Aggregate Copilot enabled/active user counts for the period.
+        GET /reports/getMicrosoft365CopilotUserCountSummary(period='D30')
+        Returns one row per report-refresh-date.
+        """
+        rows = self._fetch_csv(
+            f"/reports/getMicrosoft365CopilotUserCountSummary(period='{_period(lookback_days)}')"
+        )
+        out = []
+        for r in rows:
+            out.append({
+                "report_refresh_date": r.get("Report Refresh Date", ""),
+                "report_period":       r.get("Report Period", ""),
+                "enabled_users":       _int(r.get("Microsoft 365 Copilot Enabled Users")),
+                "active_users":        _int(r.get("Microsoft 365 Copilot Active Users")),
+                "chat_active":         _int(r.get("Copilot Chat Active Users")
+                                            or r.get("Microsoft 365 Copilot Chat Active Users")),
+                "teams_active":        _int(r.get("Teams Chat Active Users")
+                                            or r.get("Microsoft Teams Copilot Active Users")),
+                "teams_meetings_active": _int(r.get("Teams Meetings Copilot Active Users")),
+                "word_active":         _int(r.get("Word Active Users")),
+                "excel_active":        _int(r.get("Excel Active Users")),
+                "powerpoint_active":   _int(r.get("PowerPoint Active Users")),
+                "outlook_active":      _int(r.get("Outlook Active Users")),
+                "onenote_active":      _int(r.get("OneNote Active Users")),
+                "loop_active":         _int(r.get("Loop Active Users")),
+                "windows_active":      _int(r.get("Windows Copilot Active Users")),
+                "web_active":          _int(r.get("Web Copilot Active Users")),
+                "mobile_active":       _int(r.get("Mobile Copilot Active Users")),
+            })
+        return out
+
+    # ── Copilot user count trend ──────────────────────────────────────────────
+
+    def fetch_copilot_user_count_trend(self, lookback_days: int = 30) -> list[dict]:
+        """
+        Daily Copilot active user counts across the period.
+        GET /reports/getMicrosoft365CopilotUserCountTrend(period='D30')
+        """
+        rows = self._fetch_csv(
+            f"/reports/getMicrosoft365CopilotUserCountTrend(period='{_period(lookback_days)}')"
+        )
+        out = []
+        for r in rows:
+            out.append({
+                "report_date":         r.get("Report Date", ""),
+                "report_refresh_date": r.get("Report Refresh Date", ""),
+                "report_period":       r.get("Report Period", ""),
+                "active_users":        _int(r.get("Microsoft 365 Copilot Active Users")),
+                "chat_active":         _int(r.get("Copilot Chat Active Users")
+                                            or r.get("Microsoft 365 Copilot Chat Active Users")),
+                "teams_active":        _int(r.get("Teams Chat Active Users")),
+                "teams_meetings_active": _int(r.get("Teams Meetings Copilot Active Users")),
+                "word_active":         _int(r.get("Word Active Users")),
+                "excel_active":        _int(r.get("Excel Active Users")),
+                "powerpoint_active":   _int(r.get("PowerPoint Active Users")),
+                "outlook_active":      _int(r.get("Outlook Active Users")),
+                "onenote_active":      _int(r.get("OneNote Active Users")),
+                "loop_active":         _int(r.get("Loop Active Users")),
+            })
+        return out
+
+    # ── Copilot admin packages catalog ───────────────────────────────────────
+
+    def fetch_copilot_packages(self) -> list[dict]:
+        """
+        List all Copilot extension packages deployed in the tenant.
+        GET /copilot/admin/catalog/packages
+        """
+        items = self._fetch_json_paged("/copilot/admin/catalog/packages")
+        out = []
+        for p in items:
+            out.append({
+                "package_id":      p.get("id", ""),
+                "display_name":    p.get("name", "") or p.get("displayName", ""),
+                "description":     p.get("description", ""),
+                "type":            p.get("type", ""),
+                "state":           p.get("state", ""),
+                "publisher_name":  p.get("publisherName", "") or p.get("publisherId", ""),
+                "app_id":          p.get("appId", "") or p.get("teamsAppId", ""),
+                "properties":      json.dumps({
+                    k: v for k, v in p.items()
+                    if k not in ("id", "name", "displayName", "description", "type",
+                                 "state", "publisherName", "publisherId", "appId", "teamsAppId")
+                }),
+            })
+        return out
+
+    # ── O365 active user detail ───────────────────────────────────────────────
+
+    def fetch_o365_active_user_detail(self, lookback_days: int = 30) -> list[dict]:
+        """
+        Per-user O365 service activity (Exchange, Teams, SharePoint, etc.).
+        GET /reports/getOffice365ActiveUserDetail(period='D30')
+        """
+        rows = self._fetch_csv(
+            f"/reports/getOffice365ActiveUserDetail(period='{_period(lookback_days)}')"
+        )
+        out = []
+        for r in rows:
+            out.append({
+                "user_principal_name":       r.get("User Principal Name", ""),
+                "display_name":              r.get("Display Name", ""),
+                "is_deleted":                1 if r.get("Is Deleted", "").upper() == "TRUE" else 0,
+                "exchange_last_activity":    r.get("Exchange Last Activity Date", ""),
+                "onedrive_last_activity":    r.get("OneDrive Last Activity Date", ""),
+                "sharepoint_last_activity":  r.get("SharePoint Last Activity Date", ""),
+                "teams_last_activity":       r.get("Teams Last Activity Date", ""),
+                "yammer_last_activity":      r.get("Yammer Last Activity Date", ""),
+                "has_exchange_license":      1 if r.get("Has Exchange License", "").upper() == "TRUE" else 0,
+                "has_onedrive_license":      1 if r.get("Has OneDrive License", "").upper() == "TRUE" else 0,
+                "has_sharepoint_license":    1 if r.get("Has SharePoint License", "").upper() == "TRUE" else 0,
+                "has_teams_license":         1 if r.get("Has Teams License", "").upper() == "TRUE" else 0,
+                "has_yammer_license":        1 if r.get("Has Yammer License", "").upper() == "TRUE" else 0,
+                "report_refresh_date":       r.get("Report Refresh Date", ""),
+                "report_period":             r.get("Report Period", ""),
+            })
+        return out
+
+    # ── M365 app user detail ──────────────────────────────────────────────────
+
+    def fetch_m365_app_user_detail(self, lookback_days: int = 30) -> list[dict]:
+        """
+        Per-user M365 app usage across platforms (Windows/Mac/Mobile/Web).
+        GET /reports/getM365AppUserDetail(period='D30')
+        Activity columns are True/False per app × platform; we collapse to any-platform.
+        """
+        rows = self._fetch_csv(
+            f"/reports/getM365AppUserDetail(period='{_period(lookback_days)}')"
+        )
+
+        def _any(*keys: str) -> int | None:
+            vals = [r.get(k, "") for k in keys]
+            if not any(v for v in vals):  # all empty → no data
+                return None
+            return 1 if any(v.upper() == "TRUE" for v in vals) else 0
+
+        out = []
+        for r in rows:
+            out.append({
+                "user_principal_name":  r.get("User Principal Name", ""),
+                "last_activation_date": r.get("Last Activation Date", ""),
+                "last_activity_date":   r.get("Last Activity Date", ""),
+                "report_refresh_date":  r.get("Report Refresh Date", ""),
+                "report_period":        r.get("Report Period", ""),
+                "outlook_active": _any("Outlook (Windows)", "Outlook (Mac)", "Outlook (Mobile)", "Outlook (Web)"),
+                "word_active":    _any("Word (Windows)",    "Word (Mac)",    "Word (Mobile)",    "Word (Web)"),
+                "excel_active":   _any("Excel (Windows)",   "Excel (Mac)",   "Excel (Mobile)",   "Excel (Web)"),
+                "ppt_active":     _any("PowerPoint (Windows)", "PowerPoint (Mac)", "PowerPoint (Mobile)", "PowerPoint (Web)"),
+                "onenote_active": _any("OneNote (Windows)", "OneNote (Mac)", "OneNote (Mobile)", "OneNote (Web)"),
+                "teams_active":   _any("Microsoft Teams (Windows)", "Microsoft Teams (Mac)", "Microsoft Teams (Mobile)", "Microsoft Teams (Web)"),
+                "sharepoint_active": _any("SharePoint (Windows)", "SharePoint (Mac)", "SharePoint (Mobile)", "SharePoint (Web)"),
+                "onedrive_active":   _any("OneDrive (Windows)", "OneDrive (Mac)", "OneDrive (Mobile)", "OneDrive (Web)"),
+            })
+        return out
+
+    # ── Graph API request usage ───────────────────────────────────────────────
+
+    def fetch_graph_request_usage(self, lookback_days: int = 30) -> list[dict]:
+        """
+        Aggregate Microsoft Graph API request usage for this tenant/app.
+        GET /reports/getMicrosoftGraphRequestUsage(period='D30')
+        Returns one row per snapshot date.
+        """
+        rows = self._fetch_csv(
+            f"/reports/getMicrosoftGraphRequestUsage(period='{_period(lookback_days)}')"
+        )
+        out = []
+        for r in rows:
+            out.append({
+                "snapshot_date":    r.get("Snapshot Date", "") or r.get("Report Refresh Date", ""),
+                "report_period":    r.get("Report Period", ""),
+                "request_count":    _int(r.get("Total Requests") or r.get("Request Count")),
+                "fail_count":       _int(r.get("Failed Requests") or r.get("Fail Count")),
+                "app_display_name": r.get("Application Display Name", "") or r.get("App Display Name", ""),
+                "app_id":           r.get("Application Id", "") or r.get("App Id", ""),
+            })
+        return out
 
     def fetch_all_user_ids(self, max_users: int = 999) -> list[str]:
         """
