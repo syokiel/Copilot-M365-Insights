@@ -11,6 +11,8 @@ Governance and telemetry reporting for Microsoft Copilot Studio agents across an
 - **Exports** a timestamped Excel workbook with 20+ analytical sheets
 - **Exposes** an MCP server (stdio locally, HTTP on Azure Container Apps) so AI agents can query the data conversationally
 
+<img width="1078" height="1032" alt="image" src="https://github.com/user-attachments/assets/c1778089-8d53-4886-952f-352322820692" />
+
 ---
 
 ## Data sources
@@ -159,3 +161,4 @@ provision/        # One-time Azure setup scripts
 deploy.sh         # Build + deploy to Azure Container Apps
 Dockerfile        # Container image for the MCP server
 ```
+<img width="1085" height="598" alt="image" src="https://github.com/user-attachments/assets/efeabcb1-69eb-4c2b-8556-8ad12c330aa6" />
