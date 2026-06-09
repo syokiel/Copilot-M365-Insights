@@ -42,6 +42,7 @@ class Settings:
     azure_storage_account: str = ""
     azure_storage_container: str = "telemetry-data"
     azure_storage_db_blob: str = "agent_telemetry.db"
+    azure_storage_cli_account: str = ""
     # Azure Monitor (optional — cross-reference sheet)
     azure_monitor_workspace_id: str = ""
     azure_monitor_subscription_id: str = ""
@@ -78,6 +79,7 @@ class Settings:
         self.azure_storage_account = os.getenv("AZURE_STORAGE_ACCOUNT", self.azure_storage_account)
         self.azure_storage_container = os.getenv("AZURE_STORAGE_CONTAINER", self.azure_storage_container)
         self.azure_storage_db_blob = os.getenv("AZURE_STORAGE_DB_BLOB", self.azure_storage_db_blob)
+        self.azure_storage_cli_account = os.getenv("AZURE_STORAGE_CLI_ACCOUNT", self.azure_storage_cli_account)
         self.azure_monitor_workspace_id = os.getenv("AZURE_MONITOR_WORKSPACE_ID", self.azure_monitor_workspace_id)
         self.azure_monitor_subscription_id = os.getenv("AZURE_MONITOR_SUBSCRIPTION_ID", self.azure_monitor_subscription_id)
         dv = os.getenv("DATAVERSE_URL", self.dataverse_url).strip()
@@ -85,7 +87,10 @@ class Settings:
             dv = f"https://{dv}"
         self.dataverse_url = dv
         self.powerplatform_environment_id = os.getenv("POWERPLATFORM_ENVIRONMENT_ID", self.powerplatform_environment_id)
-        raw_ids = os.getenv("POWERPLATFORM_AGENT_ENV_IDS", "")
+        raw_ids = (
+            os.getenv("POWERPLATFORM_ADMIN_ENV_IDS")
+            or os.getenv("POWERPLATFORM_AGENT_ENV_IDS", "")
+        )
         self.agent_env_ids = {i.strip() for i in raw_ids.split(",") if i.strip()} if raw_ids else set()
         self.total_licenses = int(os.getenv("TOTAL_LICENSES", str(self.total_licenses)))
         self.viva_cs_report_dir = os.getenv("VIVA_CS_REPORT_DIR", self.viva_cs_report_dir).strip()

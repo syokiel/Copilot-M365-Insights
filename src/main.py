@@ -161,6 +161,30 @@ def cmd_sync() -> str:
                 except Exception as e:
                     print(f"  WARNING: {label} failed: {e}")
 
+            # ── PP Analytics (bot sessions + topic analytics) ────────────────
+            from src.fetchers.pp_analytics import PPAnalyticsFetcher
+            pp_analytics = PPAnalyticsFetcher(credential=credential)
+            known_agents = store.fetch_agents()
+            if settings.agent_env_ids:
+                known_agents = [
+                    a for a in known_agents
+                    if a.get("environment_id") in settings.agent_env_ids
+                ]
+            for label, fetch_fn, upsert_fn in [
+                ("bot sessions",
+                 lambda: pp_analytics.fetch_all_sessions(known_agents, settings.lookback_days),
+                 store.upsert_pp_bot_sessions),
+                ("bot topic analytics",
+                 lambda: pp_analytics.fetch_all_topic_analytics(known_agents, settings.lookback_days),
+                 store.upsert_pp_bot_topic_analytics),
+            ]:
+                try:
+                    items   = fetch_fn()
+                    written = upsert_fn(items)
+                    print(f"  {label}: {len(items)} fetched, {written} written")
+                except Exception as e:
+                    print(f"  WARNING: {label} failed: {e}")
+
         # ── Global Discovery (fallback if PP Admin failed / unavailable) ─────
         elif ds.key == "GLOBAL_DISCOVERY":
             if envs_fetched:

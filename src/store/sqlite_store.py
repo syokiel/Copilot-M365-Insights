@@ -530,6 +530,43 @@ CREATE INDEX IF NOT EXISTS idx_viva_cs_sess_agent  ON viva_cs_session_metrics(ag
 CREATE INDEX IF NOT EXISTS idx_viva_cs_topic_agent ON viva_cs_topic_metrics(agent_id);
 CREATE INDEX IF NOT EXISTS idx_viva_cs_wau_agent   ON viva_cs_weekly_active_users(agent_id);
 CREATE INDEX IF NOT EXISTS idx_viva_cs_auto_agent  ON viva_cs_autonomous_metrics(agent_id);
+
+-- ── Power Platform Analytics API ──────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS pp_bot_sessions (
+    row_id         TEXT PRIMARY KEY,   -- sha1(session_id|bot_id)
+    session_id     TEXT NOT NULL,
+    bot_id         TEXT NOT NULL,
+    environment_id TEXT NOT NULL,
+    start_time     TEXT,
+    outcome        TEXT,               -- Resolved, Escalated, Abandoned, Unengaged
+    duration_sec   REAL,
+    channel        TEXT,
+    topic_id       TEXT,
+    topic_name     TEXT,
+    csat_score     INTEGER,
+    turn_count     INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS pp_bot_topic_analytics (
+    bot_id             TEXT NOT NULL,
+    environment_id     TEXT NOT NULL,
+    topic_id           TEXT NOT NULL,
+    topic_name         TEXT,
+    fetch_date         TEXT NOT NULL,
+    period_from        TEXT,
+    period_to          TEXT,
+    total_sessions     INTEGER,
+    resolved_sessions  INTEGER,
+    escalated_sessions INTEGER,
+    abandoned_sessions INTEGER,
+    trigger_count      INTEGER,
+    success_rate       REAL,
+    PRIMARY KEY (bot_id, topic_id, fetch_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pp_sessions_bot ON pp_bot_sessions(bot_id);
+CREATE INDEX IF NOT EXISTS idx_pp_topic_bot    ON pp_bot_topic_analytics(bot_id);
 """
 
 
@@ -1621,6 +1658,83 @@ class SqliteStore:
     def fetch_graph_request_usage(self) -> list[dict]:
         rows = self._conn.execute(
             "SELECT * FROM m365_graph_request_usage ORDER BY snapshot_date DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    # ------------------------------------------------------------------
+    # Power Platform Analytics API
+    # ------------------------------------------------------------------
+
+    def upsert_pp_bot_sessions(self, sessions: list[dict]) -> int:
+        from src.fetchers.pp_analytics import _session_row_id
+        written = 0
+        with self._conn:
+            for s in sessions:
+                row_id = _session_row_id(
+                    s.get("session_id", ""), s.get("bot_id", "")
+                )
+                cur = self._conn.execute(
+                    """INSERT OR IGNORE INTO pp_bot_sessions
+                    (row_id, session_id, bot_id, environment_id, start_time,
+                     outcome, duration_sec, channel, topic_id, topic_name,
+                     csat_score, turn_count)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        row_id,
+                        s.get("session_id", ""),
+                        s.get("bot_id", ""),
+                        s.get("environment_id", ""),
+                        s.get("start_time", ""),
+                        s.get("outcome", ""),
+                        s.get("duration_sec"),
+                        s.get("channel", ""),
+                        s.get("topic_id", ""),
+                        s.get("topic_name", ""),
+                        s.get("csat_score"),
+                        s.get("turn_count"),
+                    ),
+                )
+                written += cur.rowcount
+        return written
+
+    def fetch_pp_bot_sessions(self) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM pp_bot_sessions ORDER BY start_time DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def upsert_pp_bot_topic_analytics(self, rows: list[dict]) -> int:
+        written = 0
+        with self._conn:
+            for r in rows:
+                cur = self._conn.execute(
+                    """INSERT OR REPLACE INTO pp_bot_topic_analytics
+                    (bot_id, environment_id, topic_id, topic_name, fetch_date,
+                     period_from, period_to, total_sessions, resolved_sessions,
+                     escalated_sessions, abandoned_sessions, trigger_count, success_rate)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        r.get("bot_id", ""),
+                        r.get("environment_id", ""),
+                        r.get("topic_id", ""),
+                        r.get("topic_name", ""),
+                        r.get("fetch_date", ""),
+                        r.get("period_from", ""),
+                        r.get("period_to", ""),
+                        r.get("total_sessions"),
+                        r.get("resolved_sessions"),
+                        r.get("escalated_sessions"),
+                        r.get("abandoned_sessions"),
+                        r.get("trigger_count"),
+                        r.get("success_rate"),
+                    ),
+                )
+                written += cur.rowcount
+        return written
+
+    def fetch_pp_bot_topic_analytics(self) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM pp_bot_topic_analytics ORDER BY bot_id, topic_name"
         ).fetchall()
         return [dict(r) for r in rows]
 

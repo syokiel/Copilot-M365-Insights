@@ -27,8 +27,7 @@ def _maybe_download_db() -> None:
     from config.settings import settings
     if not settings.azure_storage_account:
         return
-    if Path(settings.db_path).exists():
-        return
+    Path(settings.db_path).unlink(missing_ok=True)
     try:
         from src.store.blob_store import download_db
         download_db(
