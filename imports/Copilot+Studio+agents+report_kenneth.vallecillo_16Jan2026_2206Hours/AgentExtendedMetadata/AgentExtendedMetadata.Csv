@@ -1,9 +1,0 @@
-AgentId,AadTenantId,RoiConfiguration
-3c865379-30cb-9d34-5eac-a4862310bce4,4e9dbbfb-394a-4583-8810-53f81f819e3b,"{""currencyCode"":""USD"",""roiSettings"":[{""savedCost"":100.0,""savedTimeInSeconds"":600}],""roiType"":""PerRun""}"
-4458838b-ab24-351e-3f09-56524168fdd1,4e9dbbfb-394a-4583-8810-53f81f819e3b,"{""currencyCode"":""USD"",""roiSettings"":[{""savedCost"":50.0,""savedTimeInSeconds"":1800}],""roiType"":""PerRun""}"
-563f71c5-1148-b938-3c8e-ce179379137d,4e9dbbfb-394a-4583-8810-53f81f819e3b,"{""currencyCode"":""USD"",""roiSettings"":[{""savedTimeInSeconds"":120}],""roiType"":""PerRun""}"
-578241a6-ff5e-ce63-21bc-18fd3b399892,4e9dbbfb-394a-4583-8810-53f81f819e3b,"{""currencyCode"":""USD"",""roiSettings"":[{""savedCost"":100.0,""savedTimeInSeconds"":600}],""roiType"":""PerRun""}"
-aafe92e4-b32d-77f4-09ef-1d131aa5787e,4e9dbbfb-394a-4583-8810-53f81f819e3b,"{""currencyCode"":""USD"",""roiSettings"":[{""savedTimeInSeconds"":1800}],""roiType"":""PerRun""}"
-abe21e26-cc0e-d6c4-f416-84aeaa58a705,4e9dbbfb-394a-4583-8810-53f81f819e3b,"{""currencyCode"":""USD"",""roiSettings"":[{""savedCost"":0.0,""savedTimeInSeconds"":18000}],""roiType"":""PerRun""}"
-ce2d34f5-959c-32c2-14d7-cb80d1052b83,4e9dbbfb-394a-4583-8810-53f81f819e3b,"{""currencyCode"":""USD"",""roiSettings"":[{""savedTimeInSeconds"":1800}],""roiType"":""PerRun""}"
-ceede420-8909-11dc-8679-f8de582f2516,4e9dbbfb-394a-4583-8810-53f81f819e3b,"{""currencyCode"":""USD"",""roiSettings"":[{""savedCost"":48.1,""savedTimeInSeconds"":3600}],""roiType"":""PerRun""}"
