@@ -72,9 +72,12 @@ class Settings:
     # M365 Usage reports
     m365_usage_report_agents: str = ""
     m365_usage_report_agent_users: str = ""
+    m365_usage_report_users: str = ""
     # Power Platform Admin Center — Copilot credit consumption CSV exports (Tokenomics_* tables)
-    ppadmin_capacity_consumption: str = ""
-    ppadmin_entitlement_consumption: str = ""
+    ppadmin_licenses_cs_consumption_manageagents: str = ""
+    ppadmin_licenses_cs_consumption_env: str = ""
+    ppadmin_licenses_cs_consumption_agent: str = ""
+    ppadmin_licenses_cs_consumption_user: str = ""
     # MCP server (HTTP deployment)
     mcp_tenant_id: str = ""
     mcp_app_id_uri: str = ""
@@ -120,18 +123,31 @@ class Settings:
         self.viva_report_impact   = os.getenv("VIVA_REPORT_IMPACT",   self.viva_report_impact).strip()
         self.m365_admin_agent_inventory   = os.getenv("M365ADMIN_AGENT_INVENTORY",   self.m365_admin_agent_inventory).strip()
         self.m365_usage_report_agents     = (
+            os.getenv("M365ADMIN_USAGE_REPORT_AGENTS") or
             os.getenv("M365USAGE_REPORT_Agents") or
             os.getenv("M365Usage_REPORT_Agents", self.m365_usage_report_agents)
         ).strip()
         self.m365_usage_report_agent_users = (
+            os.getenv("M365ADMIN_USAGE_REPORT_AGENTUSERS") or
             os.getenv("M365USAGE_REPORT_AgentUser") or
             os.getenv("M365Usage_REPORT_AgentUser", self.m365_usage_report_agent_users)
         ).strip()
-        self.ppadmin_capacity_consumption = os.getenv(
-            "PPADMIN_CAPACITY_CONSUMPTION", self.ppadmin_capacity_consumption
+        self.m365_usage_report_users = os.getenv(
+            "M365ADMIN_USAGE_REPORT_USERS", self.m365_usage_report_users
         ).strip()
-        self.ppadmin_entitlement_consumption = os.getenv(
-            "PPADMIN_ENTITLEMENT_CONSUMPTION", self.ppadmin_entitlement_consumption
+        self.ppadmin_licenses_cs_consumption_manageagents = (
+            os.getenv("PPADMIN_LICENSES_CS_CONSUMPTION_MANAGEAGENTS") or
+            os.getenv("PPADMIN_CAPACITY_CONSUMPTION", self.ppadmin_licenses_cs_consumption_manageagents)
+        ).strip()
+        self.ppadmin_licenses_cs_consumption_env = (
+            os.getenv("PPADMIN_LICENSES_CS_CONSUMPTION_ENV") or
+            os.getenv("PPADMIN_ENTITLEMENT_CONSUMPTION", self.ppadmin_licenses_cs_consumption_env)
+        ).strip()
+        self.ppadmin_licenses_cs_consumption_agent = os.getenv(
+            "PPADMIN_LICENSES_CS_CONSUMPTION_AGENT", self.ppadmin_licenses_cs_consumption_agent
+        ).strip()
+        self.ppadmin_licenses_cs_consumption_user = os.getenv(
+            "PPADMIN_LICENSES_CS_CONSUMPTION_USER", self.ppadmin_licenses_cs_consumption_user
         ).strip()
         self.mcp_tenant_id = os.getenv("MCP_TENANT_ID", self.mcp_tenant_id)
         self.mcp_app_id_uri = os.getenv("MCP_APP_ID_URI", self.mcp_app_id_uri)

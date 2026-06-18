@@ -408,6 +408,7 @@ def cmd_sync() -> str:
         settings.m365_admin_agent_inventory,
         settings.m365_usage_report_agents,
         settings.m365_usage_report_agent_users,
+        settings.m365_usage_report_users,
     ]):
         print("\n[M365 Admin/Usage] importing CSV reports")
         from src.fetchers.m365_admin_report import M365AdminReportImporter
@@ -415,11 +416,13 @@ def cmd_sync() -> str:
             inventory_path=settings.m365_admin_agent_inventory,
             agents_path=settings.m365_usage_report_agents,
             agent_users_path=settings.m365_usage_report_agent_users,
+            users_path=settings.m365_usage_report_users,
         )
         for label, fetch_fn, upsert_fn in [
             ("agent inventory",   m365.fetch_agent_inventory,   store.upsert_m365_admin_agent_inventory),
             ("usage agents",      m365.fetch_usage_agents,       store.upsert_m365_usage_agents),
             ("usage agent users", m365.fetch_usage_agent_users,  store.upsert_m365_usage_agent_users),
+            ("usage users",       m365.fetch_usage_users,        store.upsert_m365_usage_users),
         ]:
             try:
                 items = fetch_fn()
@@ -433,18 +436,24 @@ def cmd_sync() -> str:
 
     # ── Tokenomics (PP Admin capacity/entitlement consumption) auto-import ──
     if any([
-        settings.ppadmin_capacity_consumption,
-        settings.ppadmin_entitlement_consumption,
+        settings.ppadmin_licenses_cs_consumption_manageagents,
+        settings.ppadmin_licenses_cs_consumption_env,
+        settings.ppadmin_licenses_cs_consumption_agent,
+        settings.ppadmin_licenses_cs_consumption_user,
     ]):
         print("\n[Tokenomics] importing PP Admin consumption CSV reports")
         from src.fetchers.ppadmin_consumption import PPAdminConsumptionImporter
         ppadmin = PPAdminConsumptionImporter(
-            capacity_path=settings.ppadmin_capacity_consumption,
-            entitlement_path=settings.ppadmin_entitlement_consumption,
+            capacity_path=settings.ppadmin_licenses_cs_consumption_manageagents,
+            entitlement_path=settings.ppadmin_licenses_cs_consumption_env,
+            entitlement_per_agent_path=settings.ppadmin_licenses_cs_consumption_agent,
+            entitlement_per_user_path=settings.ppadmin_licenses_cs_consumption_user,
         )
         for label, fetch_fn, upsert_fn in [
-            ("capacity consumption",    ppadmin.fetch_capacity_consumption,    store.upsert_tokenomics_capacity_consumption),
-            ("entitlement consumption", ppadmin.fetch_entitlement_consumption, store.upsert_tokenomics_entitlement_consumption),
+            ("capacity consumption",        ppadmin.fetch_capacity_consumption,    store.upsert_tokenomics_capacity_consumption),
+            ("entitlement consumption",     ppadmin.fetch_entitlement_consumption, store.upsert_tokenomics_entitlement_consumption),
+            ("entitlement per-agent",       ppadmin.fetch_entitlement_per_agent,   store.upsert_tokenomics_entitlement_per_agent),
+            ("entitlement per-user",        ppadmin.fetch_entitlement_per_user,    store.upsert_tokenomics_entitlement_per_user),
         ]:
             try:
                 items = fetch_fn()
@@ -514,9 +523,12 @@ def cmd_export(run_id: str) -> None:
     m365_admin_agent_inventory          = store.fetch_m365_admin_agent_inventory()
     m365_usage_agents                   = store.fetch_m365_usage_agents()
     m365_usage_agent_users              = store.fetch_m365_usage_agent_users()
+    m365_usage_users                    = store.fetch_m365_usage_users()
     viva_reports_cs_action_metrics      = store.fetch_viva_reports_cs_action_metrics()
     tokenomics_capacity_consumption     = store.fetch_tokenomics_capacity_consumption()
     tokenomics_entitlement_consumption  = store.fetch_tokenomics_entitlement_consumption()
+    tokenomics_entitlement_per_agent    = store.fetch_tokenomics_entitlement_per_agent()
+    tokenomics_entitlement_per_user     = store.fetch_tokenomics_entitlement_per_user()
     store.close()
 
     health_detail, crossref_summary = build_crossref(
@@ -540,7 +552,10 @@ def cmd_export(run_id: str) -> None:
           f"{len(viva_reports_cs_autonomous_metrics)} autonomous rows")
     print(f"  {len(health_detail)} health rows, {len(crossref_summary)} flagged conversations")
     print(f"  {len(tokenomics_capacity_consumption)} Tokenomics capacity rows, "
-          f"{len(tokenomics_entitlement_consumption)} entitlement rows")
+          f"{len(tokenomics_entitlement_consumption)} entitlement rows, "
+          f"{len(tokenomics_entitlement_per_agent)} per-agent rows, "
+          f"{len(tokenomics_entitlement_per_user)} per-user rows")
+    print(f"  {len(m365_usage_users)} M365 usage user rows")
 
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     p  = Path(settings.output_path)
@@ -570,9 +585,12 @@ def cmd_export(run_id: str) -> None:
         m365_admin_agent_inventory=m365_admin_agent_inventory,
         m365_usage_agents=m365_usage_agents,
         m365_usage_agent_users=m365_usage_agent_users,
+        m365_usage_users=m365_usage_users,
         viva_reports_cs_action_metrics=viva_reports_cs_action_metrics,
         tokenomics_capacity_consumption=tokenomics_capacity_consumption,
         tokenomics_entitlement_consumption=tokenomics_entitlement_consumption,
+        tokenomics_entitlement_per_agent=tokenomics_entitlement_per_agent,
+        tokenomics_entitlement_per_user=tokenomics_entitlement_per_user,
     )
 
 

@@ -23,7 +23,7 @@ def write(ws: Worksheet, rows: list[dict]) -> None:
     write_headers(ws, HEADERS)
 
     if not rows:
-        ws.cell(row=2, column=1, value="— No capacity consumption data imported (set PPADMIN_CAPACITY_CONSUMPTION) —")
+        ws.cell(row=2, column=1, value="— No capacity consumption data imported (set PPADMIN_LICENSES_CS_CONSUMPTION_MANAGEAGENTS) —")
     else:
         for i, r in enumerate(rows, start=2):
             for col, field in enumerate(_FIELDS, start=1):

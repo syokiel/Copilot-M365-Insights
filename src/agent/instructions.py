@@ -173,6 +173,24 @@ Fall back to `pva_agents.display_name` if the agent is absent from `viva_reports
   Use for "how much of our prepaid Copilot message capacity has each environment consumed, and is it
   spilling into pay-as-you-go?" Join to `tokenomics_capacity_consumption` and `m365_admin_agent_inventory`
   on `environment_id` to break tenant-wide entitlement usage down by individual flow/agent.
+- `tokenomics_entitlement_per_agent` → credit consumption broken down by individual agent from the
+  "Entitlement Consumption Per Agent Details" export. Key columns: `agent_name`, `agent_id`,
+  `product`, `ai_feature` (feature/billable feature label), `billed_credit`, `non_billed_credit`,
+  `channel`, `tool_used`, `llm_model`, `scenario_name`, `environment_id`, `environment_name`.
+  Use for "which specific agent is consuming the most credits?" and "what features/channels are driving
+  billed vs. non-billed usage?" Join to `pva_agents` or `m365_admin_agent_inventory` on `agent_id`.
+- `tokenomics_entitlement_per_user` → credit consumption broken down by individual user from the
+  "Entitlement Consumption Per User Details" export. Key columns: `user_id`, `user_email`, `agent_id`,
+  `agent_name`, `billable_credit_used`, `credits_used`, `m365_copilot_licensed` (0/1).
+  Use for "which users are consuming the most credits?" or "are unlicensed users driving PAYG charges?"
+  Join to `m365_usage_agent_users` on `user_id`/`agent_id` for cross-reference with M365 usage data.
+
+**M365 Usage — Users**
+- `m365_usage_users` → per-user rollup of declarative agent activity (30-day window). Key columns:
+  `username` (UPN), `display_name`, `agents_used` (count of distinct agents interacted with),
+  `agent_responses_received` (total responses), `last_activity_date`.
+  Use for "which users are most active across agents?" — a complement to `m365_usage_agent_users`
+  (which is per-user-per-agent). Join to `m365_usage_agent_users` on `username` for drill-down.
 
 ## Key join patterns
 
@@ -250,6 +268,24 @@ FROM tokenomics_capacity_consumption c
 JOIN m365_admin_agent_inventory i ON i.environment_id = c.environment_id AND i.bot_id = c.resource_id
 GROUP BY c.resource_id, c.feature_name
 ORDER BY total DESC
+
+-- Top agents by billed credits (per-agent breakdown):
+SELECT agent_name, environment_name,
+       SUM(billed_credit) AS total_billed, SUM(non_billed_credit) AS total_non_billed
+FROM tokenomics_entitlement_per_agent
+GROUP BY agent_id, environment_id
+ORDER BY total_billed DESC
+
+-- Top users by total credits consumed:
+SELECT user_email, agent_name, credits_used, billable_credit_used,
+       CASE WHEN m365_copilot_licensed THEN 'Yes' ELSE 'No' END AS licensed
+FROM tokenomics_entitlement_per_user
+ORDER BY credits_used DESC
+
+-- Most active users across agents (M365 usage rollup):
+SELECT username, display_name, agents_used, agent_responses_received, last_activity_date
+FROM m365_usage_users
+ORDER BY agent_responses_received DESC
 ```
 
 ## Tone

@@ -8,6 +8,7 @@ Supported files (passed as direct file paths via config env vars):
   M365Admin.Agents.AllAgents.Registry.Agents_*.csv          → m365_admin_agent_inventory
   M365Admin.Reporting.Usage.Agents.Agents.*_Agents_*.csv    → m365_usage_agents
   M365Admin.Reporting.Usage.Agents.UsersAndAgents.*csv      → m365_usage_agent_users
+  DeclarativeAgents_Users_30_*.csv                          → m365_usage_users
 """
 import csv
 import re
@@ -75,10 +76,12 @@ class M365AdminReportImporter:
         inventory_path: str = "",
         agents_path: str = "",
         agent_users_path: str = "",
+        users_path: str = "",
     ) -> None:
         self._inventory_path   = inventory_path
         self._agents_path      = agents_path
         self._agent_users_path = agent_users_path
+        self._users_path       = users_path
 
     def fetch_agent_inventory(self) -> list[dict]:
         out = []
@@ -146,5 +149,18 @@ class M365AdminReportImporter:
                 'creator_type':       r.get('Creator type', ''),
                 'responses_sent':     _int(r.get('Responses sent to users')),
                 'last_activity_date': _norm_date(r.get('Last activity date (UTC)', '')),
+            })
+        return out
+
+    def fetch_usage_users(self) -> list[dict]:
+        """Per-user rollup: how many agents each user interacted with and total responses."""
+        out = []
+        for r in _read(self._users_path):
+            out.append({
+                'username':                 r.get('Username', ''),
+                'display_name':             r.get('Display name', ''),
+                'agents_used':              _int(r.get('Number of agents used')),
+                'agent_responses_received': _int(r.get('Agent responses received')),
+                'last_activity_date':       _norm_date(r.get('Last activity date (UTC)', '')),
             })
         return out

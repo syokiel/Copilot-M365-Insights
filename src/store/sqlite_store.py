@@ -750,6 +750,16 @@ CREATE TABLE IF NOT EXISTS m365_usage_agent_users (
 CREATE INDEX IF NOT EXISTS idx_m365_admin_inv_bot    ON m365_admin_agent_inventory(bot_id);
 CREATE INDEX IF NOT EXISTS idx_m365_usage_users_user ON m365_usage_agent_users(username);
 
+-- ── M365 Usage — Per-User Agent Activity Rollup ──────────────────────────
+
+CREATE TABLE IF NOT EXISTS m365_usage_users (
+    username                 TEXT PRIMARY KEY,
+    display_name             TEXT,
+    agents_used              INTEGER,
+    agent_responses_received INTEGER,
+    last_activity_date       TEXT
+);
+
 -- ── Tokenomics — Copilot Credit Consumption (Power Platform Admin) ───────
 
 CREATE TABLE IF NOT EXISTS tokenomics_capacity_consumption (
@@ -786,6 +796,38 @@ CREATE TABLE IF NOT EXISTS tokenomics_entitlement_consumption (
 CREATE INDEX IF NOT EXISTS idx_tokenomics_capacity_env    ON tokenomics_capacity_consumption(environment_id);
 CREATE INDEX IF NOT EXISTS idx_tokenomics_capacity_date   ON tokenomics_capacity_consumption(consumption_date);
 CREATE INDEX IF NOT EXISTS idx_tokenomics_entitlement_env ON tokenomics_entitlement_consumption(environment_id);
+
+CREATE TABLE IF NOT EXISTS tokenomics_entitlement_per_agent (
+    row_id           TEXT PRIMARY KEY,  -- synthetic hash: agent_id|ai_feature|channel|tool_used|scenario_name|environment_id
+    agent_name       TEXT,
+    agent_id         TEXT,
+    product          TEXT,
+    ai_feature       TEXT,
+    billed_credit    REAL,
+    non_billed_credit REAL,
+    channel          TEXT,
+    knowledge_sources TEXT,
+    tool_used        TEXT,
+    llm_model        TEXT,
+    scenario_name    TEXT,
+    environment_id   TEXT,
+    environment_name TEXT
+);
+
+CREATE TABLE IF NOT EXISTS tokenomics_entitlement_per_user (
+    user_id               TEXT NOT NULL,
+    agent_id              TEXT NOT NULL,
+    user_email            TEXT,
+    agent_name            TEXT,
+    billable_credit_used  REAL,
+    credits_used          REAL,
+    m365_copilot_licensed INTEGER,
+    PRIMARY KEY (user_id, agent_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tokenomics_per_agent_agent ON tokenomics_entitlement_per_agent(agent_id);
+CREATE INDEX IF NOT EXISTS idx_tokenomics_per_agent_env   ON tokenomics_entitlement_per_agent(environment_id);
+CREATE INDEX IF NOT EXISTS idx_tokenomics_per_user_user   ON tokenomics_entitlement_per_user(user_id);
 """
 
 
@@ -821,6 +863,14 @@ def _capacity_consumption_row_id(r: dict) -> str:
     key = (
         f"{r.get('environment_id')}|{r.get('resource_id')}|{r.get('resource_name')}|"
         f"{r.get('feature_name')}|{r.get('channel_id')}|{r.get('is_billable')}|{r.get('consumption_date')}"
+    )
+    return hashlib.sha1(key.encode()).hexdigest()
+
+
+def _entitlement_per_agent_row_id(r: dict) -> str:
+    key = (
+        f"{r.get('agent_id')}|{r.get('ai_feature')}|{r.get('channel')}|"
+        f"{r.get('tool_used')}|{r.get('scenario_name')}|{r.get('environment_id')}"
     )
     return hashlib.sha1(key.encode()).hexdigest()
 
@@ -1984,6 +2034,73 @@ class SqliteStore:
     def fetch_tokenomics_entitlement_consumption(self) -> list[dict]:
         rows = self._conn.execute(
             "SELECT * FROM tokenomics_entitlement_consumption ORDER BY usage_date DESC, environment_name"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def upsert_m365_usage_users(self, rows: list[dict]) -> int:
+        written = 0
+        with self._conn:
+            for r in rows:
+                cur = self._conn.execute(
+                    """INSERT OR REPLACE INTO m365_usage_users VALUES (?,?,?,?,?)""",
+                    (
+                        r.get('username'), r.get('display_name'), r.get('agents_used'),
+                        r.get('agent_responses_received'), r.get('last_activity_date'),
+                    ),
+                )
+                written += cur.rowcount
+        return written
+
+    def fetch_m365_usage_users(self) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM m365_usage_users ORDER BY agent_responses_received DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def upsert_tokenomics_entitlement_per_agent(self, rows: list[dict]) -> int:
+        written = 0
+        with self._conn:
+            for r in rows:
+                cur = self._conn.execute(
+                    """INSERT OR REPLACE INTO tokenomics_entitlement_per_agent VALUES
+                    (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        _entitlement_per_agent_row_id(r),
+                        r.get('agent_name'), r.get('agent_id'), r.get('product'),
+                        r.get('ai_feature'), r.get('billed_credit'), r.get('non_billed_credit'),
+                        r.get('channel'), r.get('knowledge_sources'), r.get('tool_used'),
+                        r.get('llm_model'), r.get('scenario_name'),
+                        r.get('environment_id'), r.get('environment_name'),
+                    ),
+                )
+                written += cur.rowcount
+        return written
+
+    def fetch_tokenomics_entitlement_per_agent(self) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM tokenomics_entitlement_per_agent ORDER BY billed_credit DESC, agent_name"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def upsert_tokenomics_entitlement_per_user(self, rows: list[dict]) -> int:
+        written = 0
+        with self._conn:
+            for r in rows:
+                cur = self._conn.execute(
+                    """INSERT OR REPLACE INTO tokenomics_entitlement_per_user VALUES
+                    (?,?,?,?,?,?,?)""",
+                    (
+                        r.get('user_id'), r.get('agent_id'), r.get('user_email'),
+                        r.get('agent_name'), r.get('billable_credit_used'),
+                        r.get('credits_used'), r.get('m365_copilot_licensed'),
+                    ),
+                )
+                written += cur.rowcount
+        return written
+
+    def fetch_tokenomics_entitlement_per_user(self) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM tokenomics_entitlement_per_user ORDER BY credits_used DESC"
         ).fetchall()
         return [dict(r) for r in rows]
 

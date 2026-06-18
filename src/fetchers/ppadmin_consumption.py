@@ -6,8 +6,10 @@ tenant-detail exports from the Power Platform Admin Center and converts
 them to lists of dicts for the SQLite store (Tokenomics_* tables).
 
 Supported files (passed as direct file paths via config env vars):
-  CapacityConsumptionTenantDetailsReport.csv                       → tokenomics_capacity_consumption
-  EntitlementConsumptionTenantDetailsReport_MCSMessages_*.csv       → tokenomics_entitlement_consumption
+  CapacityConsumptionTenantDetailsReport.csv                              → tokenomics_capacity_consumption
+  EntitlementConsumptionTenantDetailsReport_MCSMessages_*.csv             → tokenomics_entitlement_consumption
+  EntitlementConsumptionTenantPerAgentDetailsReport_MCSMessages_*.csv     → tokenomics_entitlement_per_agent
+  EntitlementConsumptionTenantPerUserDetailsReport_MCSMessages_*.csv      → tokenomics_entitlement_per_user
 """
 import csv
 import re
@@ -53,9 +55,17 @@ def _read(path: str) -> list[dict]:
 class PPAdminConsumptionImporter:
     """Reads Power Platform Admin Center consumption CSV exports from direct file paths."""
 
-    def __init__(self, capacity_path: str = "", entitlement_path: str = "") -> None:
-        self._capacity_path = capacity_path
-        self._entitlement_path = entitlement_path
+    def __init__(
+        self,
+        capacity_path: str = "",
+        entitlement_path: str = "",
+        entitlement_per_agent_path: str = "",
+        entitlement_per_user_path: str = "",
+    ) -> None:
+        self._capacity_path             = capacity_path
+        self._entitlement_path          = entitlement_path
+        self._entitlement_per_agent_path = entitlement_per_agent_path
+        self._entitlement_per_user_path  = entitlement_per_user_path
 
     def fetch_capacity_consumption(self) -> list[dict]:
         out = []
@@ -91,5 +101,41 @@ class PPAdminConsumptionImporter:
                 'prepaid_consumed_quantity': _float(r.get('Prepaid Consumed Quantity')),
                 'payg_consumed_quantity':    _float(r.get('Pay as you go Consumed Quantity')),
                 'usage_date':                _norm_date(r.get('Usage Date', '')),
+            })
+        return out
+
+    def fetch_entitlement_per_agent(self) -> list[dict]:
+        """Per-agent credit breakdown from PerAgentDetails report."""
+        out = []
+        for r in _read(self._entitlement_per_agent_path):
+            out.append({
+                'agent_name':       r.get('Agent Name', ''),
+                'agent_id':         r.get('Agent Id', ''),
+                'product':          r.get('Product', ''),
+                'ai_feature':       r.get('AI Feature/Billable Feature', ''),
+                'billed_credit':    _float(r.get('Billed credit')),
+                'non_billed_credit': _float(r.get('Non-billed credit')),
+                'channel':          r.get('Channel', ''),
+                'knowledge_sources': r.get('Knowledge Sources', ''),
+                'tool_used':        r.get('Tool Used', ''),
+                'llm_model':        r.get('LLM Model', ''),
+                'scenario_name':    r.get('Scenario Name', ''),
+                'environment_id':   r.get('Environment Id', ''),
+                'environment_name': r.get('Environment Name', ''),
+            })
+        return out
+
+    def fetch_entitlement_per_user(self) -> list[dict]:
+        """Per-user credit breakdown from PerUserDetails report."""
+        out = []
+        for r in _read(self._entitlement_per_user_path):
+            out.append({
+                'user_id':              r.get('User Id', ''),
+                'user_email':           r.get('User Email', ''),
+                'agent_id':             r.get('Agent Id', ''),
+                'agent_name':           r.get('Agent Name', ''),
+                'billable_credit_used': _float(r.get('Billable credit used')),
+                'credits_used':         _float(r.get('Credits used')),
+                'm365_copilot_licensed': _bool(r.get('M365 Copilot Licensed', '')),
             })
         return out
