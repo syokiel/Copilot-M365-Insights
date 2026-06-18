@@ -28,7 +28,31 @@ Governance and telemetry reporting for Microsoft Copilot Studio agents across an
 | Copilot Studio Analytics (CSV) | Sessions, topics, WAU, autonomous metrics |
 | Microsoft Purview | Data governance signals |
 | Microsoft Defender for Cloud | Security alerts, secure score |
-
+|---|---|
+| Export / Import (.csv)|
+| Microsoft Insights Reports | Copilot Impact, Copilot Adoption, Copilot Studio Agents |
+| Microsoft M365 Admin Agent Inventory | Agent listing with metadata | M365 Admin > Agents > All Agents > Export |
+| Microsoft M365 Admin Usage | M365 Admin > Reports > Usage > Microsoft 365 Copilot > Agents > Export (3x: Users,Agents, Users & Agents) |
+| Microsoft M365 Admin Credit Usage | M365 Admin > Reports > Usage > Microsoft 365 Copilot > Credits > Export  |
+| Microsoft Power Platform Credit Usage | Power Platform Admin > Licensing > Copilot Studio > Export (3x: Env,Agent,User) | 
+| Microsoft Power Platform Credit Usage | Power Platform Admin > Licensing > Copilot Studio > Manage Agents > Export | 
+|
+| .config sample
+# M365 Insights — 
+| VIVA_REPROT_CS_DIR=imports/June2026/CS+Agents+Report_YOKIEL  # Copilot Studio CSV export folder — set path to auto-import on every sync/all run
+| VIVA_REPORT_ADOPTION=imports/June2026/Copilot Adoption Report_YOKIEL.Csv
+| VIVA_REPORT_IMPACT=imports/June2026/Copilot Impact_YOKIEL.Csv
+# M365 Admin Center — 
+| M365ADMIN_AGENT_INVENTORY=imports/June2026/Agents_2026-06-12_16_10_35.csv
+| M365ADMIN_USAGE_REPORT_Users=imports/June2026/DeclarativeAgents_Users_30_2026-06-18T18-11-03.csv
+| M365ADMIN_USAGE_REPORT_Agents=imports/June2026/DeclarativeAgents_Agents_30_2026-06-12T16-09-57.csv
+| M365ADMIN_USAGE_REPORT_AgentUser=imports/June2026/DeclarativeAgents_Users___agents_30_2026-06-12T16-09-29.csv
+| M365USAGE_REPORT_Credits=imports/June2026/????.csv
+# Power Platform Admin Center — Copilot credit consumption (Tokenomics_* tables)
+| PPADMIN_LICENSES_CS_CONSUMPTION_ENV=imports/June2026/EntitlementConsumptionTenantDetailsReport_MCSMessages_180.csv
+| PPADMIN_LICENSES_CS_CONSUMPTION_AGENT=imports/June2026/EntitlementConsumptionTenantPerAgentDetailsReport_MCSMessages_180.csv
+| PPADMIN_LICENSES_CS_CONSUMPTION_USER=imports/June2026/EntitlementConsumptionTenantPerUserDetailsReport_MCSMessages_180.csv
+| PPADMIN_LICENSES_CS_CONSUMPTION_MANAGEAGENTS=imports/June2026/CapacityConsumptionTenantDetailsReport.csv
 ---
 
 ## Excel output sheets
