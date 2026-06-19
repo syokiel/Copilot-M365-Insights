@@ -295,4 +295,4 @@ deploy.sh         # Build + deploy to Azure Container Apps
 Dockerfile        # Container image for the MCP server
 ```
 
-<img width="1008" height="426" alt="image" src="https://github.com/user-attachments/assets/aa6c2101-b826-4914-8072-6da85eb3d683" />
+<img width="992" height="418" alt="image" src="https://github.com/user-attachments/assets/59e30e82-02f1-4bd9-9d24-2f75784eed1a" />
