@@ -28,6 +28,7 @@ from src.writers import (
     sheet_tokenomics_entitlement,
     sheet_tokenomics_entitlement_per_agent,
     sheet_tokenomics_entitlement_per_user,
+    sheet_tokenomics_summary,
     sheet_viva,
     sheet_viva_adoption,
     sheet_viva_impact,
@@ -98,9 +99,15 @@ def build_workbook(
     latest_kpi = kpi_snapshots[0] if kpi_snapshots else None
 
     # Always-present sheets (summary / history depend on all data)
-    sheet_kpi_history.write(wb.create_sheet("KPI History"), kpi_snapshots or [])
+    sheet_kpi_history.write(
+        wb.create_sheet("KPI History"),
+        kpi_snapshots or [],
+        entitlement=tokenomics_entitlement_consumption or [],
+        per_agent=tokenomics_entitlement_per_agent or [],
+        capacity=tokenomics_capacity_consumption or [],
+    )
     sheet_summary.write(
-        wb.create_sheet("Summary"), events, connector_calls, model_calls or [],
+        wb.create_sheet("Copilot_Adoption_Summary"), events, connector_calls, model_calls or [],
         kpi_snapshot=latest_kpi,
         viva_reports_cs_sessions=viva_reports_cs_session_metrics or [],
         viva_reports_cs_wau=viva_reports_cs_weekly_active_users or [],
@@ -120,6 +127,21 @@ def build_workbook(
             adoption=viva_reports_copilot_adoption or [],
             kpi_snapshot=latest_kpi,
             agents=viva_reports_cs_copilot_agents or {},
+        )
+
+    _tok = (
+        tokenomics_entitlement_consumption or [],
+        tokenomics_entitlement_per_agent or [],
+        tokenomics_entitlement_per_user or [],
+        tokenomics_capacity_consumption or [],
+    )
+    if any(_tok):
+        sheet_tokenomics_summary.write(
+            wb.create_sheet("Tokenomics_Summary"),
+            entitlement=tokenomics_entitlement_consumption or [],
+            per_agent=tokenomics_entitlement_per_agent or [],
+            per_user=tokenomics_entitlement_per_user or [],
+            capacity=tokenomics_capacity_consumption or [],
         )
 
     _if("Invocations",           sheet_invocations.write,         events, connector_calls)
