@@ -462,9 +462,106 @@ async def list_tools() -> ListToolsResult:
 async def call_tool(name: str, arguments: dict) -> CallToolResult:
     try:
         result = _dispatch(name, arguments)
-        return CallToolResult(content=[TextContent(type="text", text=json.dumps(result, separators=(",", ":"), default=str))])
+        text = _render(name, result)
+        return CallToolResult(content=[TextContent(type="text", text=text)])
     except Exception as e:
         return CallToolResult(content=[TextContent(type="text", text=f"Error: {e}")], isError=True)
+
+
+def _render(name: str, result: object) -> str:
+    """Convert tool results to compact text. Much cheaper than JSON for LLM callers."""
+    if isinstance(result, dict):
+        return "\n".join(f"{k}: {v}" for k, v in result.items() if v is not None)
+    if not isinstance(result, list):
+        return str(result)
+    if not result:
+        return "No results."
+
+    formatters = {
+        "get_kpi_snapshot":    _fmt_kpi,
+        "get_agent_activity":  _fmt_agent_activity,
+        "get_conversations":   _fmt_conversations,
+        "get_top_connectors":  _fmt_connectors,
+        "get_user_activity":   _fmt_user_activity,
+        "get_agents":          _fmt_agents,
+    }
+    fmt = formatters.get(name)
+    if fmt:
+        return fmt(result)
+    # Generic fallback: TSV-style — one row per line, tab-separated values (no repeated keys)
+    if isinstance(result[0], dict):
+        keys = list(result[0].keys())
+        header = "\t".join(keys)
+        rows = "\n".join("\t".join(str(r.get(k, "")) for k in keys) for r in result)
+        return f"{header}\n{rows}"
+    return "\n".join(str(r) for r in result)
+
+
+def _fmt_kpi(rows: list) -> str:
+    r = rows[0] if isinstance(rows, list) else rows
+    if not isinstance(r, dict):
+        return str(r)
+    lines = [f"KPI Snapshot — {r.get('snapshot_date','')[:10]} (last {r.get('lookback_days','')}d)"]
+    for k, v in r.items():
+        if k not in ("snapshot_date", "lookback_days") and v is not None:
+            lines.append(f"  {k}: {v}")
+    return "\n".join(lines)
+
+
+def _fmt_agent_activity(rows: list) -> str:
+    lines = [f"{len(rows)} agent(s):"]
+    for r in rows:
+        lines.append(
+            f"  {r.get('agent_name','')} | {r.get('environment','')} | "
+            f"total={r.get('total_conversations',0)} prod={r.get('production_conversations',0)} "
+            f"test={r.get('test_conversations',0)} last={str(r.get('last_activity',''))[:10]}"
+        )
+    return "\n".join(lines)
+
+
+def _fmt_conversations(rows: list) -> str:
+    lines = [f"{len(rows)} conversation(s):"]
+    for r in rows:
+        lines.append(
+            f"  {r.get('conversation_id','')[:12]}… {r.get('channel','')} "
+            f"recv={r.get('recv',0)} sent={r.get('sent',0)} "
+            f"connectors={r.get('connector_calls',0)} {str(r.get('first_event',''))[:16]}"
+        )
+    return "\n".join(lines)
+
+
+def _fmt_connectors(rows: list) -> str:
+    lines = [f"{len(rows)} connector(s):"]
+    for r in rows:
+        ok = r.get('successful', 0)
+        total = r.get('total_calls', 0)
+        pct = round(ok * 100 / total, 1) if total else 0
+        lines.append(
+            f"  {r.get('connector_name','')} / {r.get('action_target','')} "
+            f"calls={total} ok={pct}% avg={r.get('avg_duration_ms','')}ms"
+        )
+    return "\n".join(lines)
+
+
+def _fmt_user_activity(rows: list) -> str:
+    lines = [f"{len(rows)} user(s):"]
+    for r in rows:
+        lines.append(
+            f"  {r.get('user_id','')[:12]}… convs={r.get('total_conversations',0)} "
+            f"msgs={r.get('messages_sent',0)} last={str(r.get('last_activity',''))[:10]}"
+        )
+    return "\n".join(lines)
+
+
+def _fmt_agents(rows: list) -> str:
+    lines = [f"{len(rows)} agent(s):"]
+    for r in rows:
+        lines.append(
+            f"  {r.get('display_name','')} | {r.get('environment','')} | "
+            f"solution={r.get('solution_name','')} managed={r.get('is_managed','')} "
+            f"published={str(r.get('published_at',''))[:10]}"
+        )
+    return "\n".join(lines)
 
 
 _MAX_ROWS = 50  # hard ceiling for all list-returning tools
@@ -811,7 +908,7 @@ def _run_http() -> None:
     session_manager = StreamableHTTPSessionManager(
         app=server,
         event_store=None,
-        json_response=False,
+        json_response=True,
         stateless=True,   # stateless = no session pinning required; simplest for agent platforms
     )
 
