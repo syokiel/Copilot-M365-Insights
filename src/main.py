@@ -476,6 +476,52 @@ def cmd_sync() -> str:
             except Exception as e:
                 print(f"  WARNING: {label} failed: {e}")
 
+    # ── M365 Usage / Billing CSV imports ─────────────────────────────────────
+    if any([
+        settings.m365_usage_activations_users,
+        settings.m365_usage_active_users_services,
+        settings.m365_usage_active_users_activity,
+        settings.m365_usage_active_users_counts,
+        settings.m365_usage_active_users_detail,
+        settings.m365_usage_proplus_platforms,
+        settings.m365_usage_proplus_counts,
+        settings.m365_usage_proplus_detail,
+        settings.billing_licences,
+    ]):
+        print("\n[M365 Usage / Billing] importing CSV reports")
+        from src.fetchers.m365_usage_report import M365UsageReportImporter
+        m365u = M365UsageReportImporter(
+            activations_users_path=settings.m365_usage_activations_users,
+            services_counts_path=settings.m365_usage_active_users_services,
+            activity_counts_path=settings.m365_usage_active_users_activity,
+            active_user_counts_path=settings.m365_usage_active_users_counts,
+            active_users_detail_path=settings.m365_usage_active_users_detail,
+            proplus_platforms_path=settings.m365_usage_proplus_platforms,
+            proplus_counts_path=settings.m365_usage_proplus_counts,
+            proplus_detail_path=settings.m365_usage_proplus_detail,
+            billing_licences_path=settings.billing_licences,
+        )
+        for label, fetch_fn, upsert_fn in [
+            ("activations (users)",    m365u.fetch_activations_users,   store.upsert_m365_usage_activations_users),
+            ("services counts",        m365u.fetch_services_counts,     store.upsert_m365_usage_active_users_services),
+            ("activity counts",        m365u.fetch_activity_counts,     store.upsert_m365_usage_active_users_activity),
+            ("active user counts",     m365u.fetch_active_user_counts,  store.upsert_m365_usage_active_user_counts),
+            ("active users detail",    m365u.fetch_active_users_detail, store.upsert_m365_usage_active_users_detail),
+            ("ProPlus platforms",      m365u.fetch_proplus_platforms,   store.upsert_m365_usage_proplus_platforms),
+            ("ProPlus app counts",     m365u.fetch_proplus_counts,      store.upsert_m365_usage_proplus_counts),
+            ("ProPlus user detail",    m365u.fetch_proplus_detail,      store.upsert_m365_usage_proplus_detail),
+            ("billing licences",       m365u.fetch_billing_licences,    store.upsert_billing_licences),
+        ]:
+            try:
+                items = fetch_fn()
+                if items:
+                    written = upsert_fn(items)
+                    print(f"  {label}: {len(items)} rows, {written} written")
+                else:
+                    print(f"  {label}: file not found or not configured, skipped")
+            except Exception as e:
+                print(f"  WARNING: {label} failed: {e}")
+
     # ── KPI snapshot ─────────────────────────────────────────────────────────
     print("\n[KPI Snapshot]")
     try:
@@ -542,6 +588,15 @@ def cmd_export(run_id: str) -> None:
     tokenomics_entitlement_per_user     = store.fetch_tokenomics_entitlement_per_user()
     xla_by_persona_journey              = store.fetch_xla_by_persona_journey()
     xla_agent_contribution              = store.fetch_agent_contribution_by_persona_journey()
+    m365_usage_activations_users        = store.fetch_m365_usage_activations_users()
+    m365_usage_active_users_services    = store.fetch_m365_usage_active_users_services()
+    m365_usage_active_users_activity    = store.fetch_m365_usage_active_users_activity()
+    m365_usage_active_user_counts       = store.fetch_m365_usage_active_user_counts()
+    m365_usage_active_users_detail      = store.fetch_m365_usage_active_users_detail()
+    m365_usage_proplus_platforms        = store.fetch_m365_usage_proplus_platforms()
+    m365_usage_proplus_counts           = store.fetch_m365_usage_proplus_counts()
+    m365_usage_proplus_detail           = store.fetch_m365_usage_proplus_detail()
+    billing_licences                    = store.fetch_billing_licences()
     store.close()
 
     health_detail, crossref_summary = build_crossref(
@@ -607,6 +662,15 @@ def cmd_export(run_id: str) -> None:
         tokenomics_entitlement_per_user=tokenomics_entitlement_per_user,
         xla_by_persona_journey=xla_by_persona_journey,
         xla_agent_contribution=xla_agent_contribution,
+        m365_usage_activations_users=m365_usage_activations_users,
+        m365_usage_active_users_services=m365_usage_active_users_services,
+        m365_usage_active_users_activity=m365_usage_active_users_activity,
+        m365_usage_active_user_counts=m365_usage_active_user_counts,
+        m365_usage_active_users_detail=m365_usage_active_users_detail,
+        m365_usage_proplus_platforms=m365_usage_proplus_platforms,
+        m365_usage_proplus_counts=m365_usage_proplus_counts,
+        m365_usage_proplus_detail=m365_usage_proplus_detail,
+        billing_licences=billing_licences,
     )
 
 

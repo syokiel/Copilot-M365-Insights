@@ -80,6 +80,17 @@ class Settings:
     ppadmin_licenses_cs_consumption_env: str = ""
     ppadmin_licenses_cs_consumption_agent: str = ""
     ppadmin_licenses_cs_consumption_user: str = ""
+    # M365 Admin Center — Office 365 / Microsoft 365 Apps usage CSV exports
+    m365_usage_activations_users: str = ""
+    m365_usage_active_users_services: str = ""
+    m365_usage_active_users_activity: str = ""
+    m365_usage_active_users_counts: str = ""
+    m365_usage_active_users_detail: str = ""
+    m365_usage_proplus_platforms: str = ""
+    m365_usage_proplus_counts: str = ""
+    m365_usage_proplus_detail: str = ""
+    # License inventory (M365 Admin Center → Billing → Licenses → Export)
+    billing_licences: str = ""
     # MCP server (HTTP deployment)
     mcp_tenant_id: str = ""
     mcp_app_id_uri: str = ""
@@ -152,6 +163,15 @@ class Settings:
         self.ppadmin_licenses_cs_consumption_user = os.getenv(
             "PPADMIN_LICENSES_CS_CONSUMPTION_USER", self.ppadmin_licenses_cs_consumption_user
         ).strip()
+        self.m365_usage_activations_users    = os.getenv("M365USAGE_ACTIVATIONS_USERS",    self.m365_usage_activations_users).strip()
+        self.m365_usage_active_users_services = os.getenv("M365USAGE_ACTIVE_USERS_SERVICES", self.m365_usage_active_users_services).strip()
+        self.m365_usage_active_users_activity = os.getenv("M365USAGE_ACTIVE_USERS_ACTIVITY", self.m365_usage_active_users_activity).strip()
+        self.m365_usage_active_users_counts  = os.getenv("M365USAGE_ACTIVE_USERS_COUNTS",  self.m365_usage_active_users_counts).strip()
+        self.m365_usage_active_users_detail  = os.getenv("M365USAGE_ACTIVE_USERS_DETAIL",  self.m365_usage_active_users_detail).strip()
+        self.m365_usage_proplus_platforms    = os.getenv("M365USAGE_PROPLUS_PLATFORMS",    self.m365_usage_proplus_platforms).strip()
+        self.m365_usage_proplus_counts       = os.getenv("M365USAGE_PROPLUS_COUNTS",       self.m365_usage_proplus_counts).strip()
+        self.m365_usage_proplus_detail       = os.getenv("M365USAGE_PROPLUS_DETAIL",       self.m365_usage_proplus_detail).strip()
+        self.billing_licences                = os.getenv("BILLING_LICENCES",               self.billing_licences).strip()
         self.mcp_tenant_id = os.getenv("MCP_TENANT_ID", self.mcp_tenant_id)
         self.mcp_app_id_uri = os.getenv("MCP_APP_ID_URI", self.mcp_app_id_uri)
         self.mcp_api_key = os.getenv("MCP_API_KEY", self.mcp_api_key)

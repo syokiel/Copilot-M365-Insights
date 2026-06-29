@@ -39,6 +39,16 @@ from src.writers import (
     sheet_xla,
     sheet_xla_persona_journey,
     sheet_xla_agent_contribution,
+    sheet_m365_licence_optimization,
+    sheet_m365_activations,
+    sheet_m365_services_counts,
+    sheet_m365_activity_counts,
+    sheet_m365_active_user_counts,
+    sheet_m365_active_users_detail,
+    sheet_m365_proplus_platforms,
+    sheet_m365_proplus_counts,
+    sheet_m365_proplus_detail,
+    sheet_billing_licences,
 )
 
 
@@ -82,6 +92,15 @@ def build_workbook(
     tokenomics_entitlement_per_user: list[dict] | None = None,
     xla_by_persona_journey: list[dict] | None = None,
     xla_agent_contribution: list[dict] | None = None,
+    m365_usage_activations_users: list[dict] | None = None,
+    m365_usage_active_users_services: list[dict] | None = None,
+    m365_usage_active_users_activity: list[dict] | None = None,
+    m365_usage_active_user_counts: list[dict] | None = None,
+    m365_usage_active_users_detail: list[dict] | None = None,
+    m365_usage_proplus_platforms: list[dict] | None = None,
+    m365_usage_proplus_counts: list[dict] | None = None,
+    m365_usage_proplus_detail: list[dict] | None = None,
+    billing_licences: list[dict] | None = None,
 ) -> None:
     wb = openpyxl.Workbook()
     wb.remove(wb.active)
@@ -144,6 +163,16 @@ def build_workbook(
             capacity=tokenomics_capacity_consumption or [],
         )
 
+    if billing_licences:
+        sheet_m365_licence_optimization.write(
+            wb.create_sheet("M365_Licence_Optimization"),
+            billing_licences=billing_licences or [],
+            services_counts=m365_usage_active_users_services or [],
+            active_users_detail=m365_usage_active_users_detail or [],
+            activations_users=m365_usage_activations_users or [],
+            proplus_counts=m365_usage_proplus_counts or [],
+        )
+
     _if("Invocations",           sheet_invocations.write,         events, connector_calls)
     _if("Connectors",            sheet_connectors.write,           connector_calls)
     _if("AI_Model_Calls",        sheet_ai_usage.write,             model_calls or [])
@@ -174,8 +203,17 @@ def build_workbook(
     _if("Tokenomics_PerUser",     sheet_tokenomics_entitlement_per_user.write,  tokenomics_entitlement_per_user or [])
     _if("XLA_Persona_Journey",    sheet_xla_persona_journey.write,    xla_by_persona_journey or [])
     _if("XLA_Agent_Contribution", sheet_xla_agent_contribution.write, xla_agent_contribution or [])
-    _if("AzureMonitor_Health",   sheet_az_health.write,            health_detail or [])
-    _if("CrossRef_Summary",      sheet_crossref.write,             crossref_summary or [])
+    _if("M365_Activations",        sheet_m365_activations.write,         m365_usage_activations_users or [])
+    _if("M365_Services_Counts",   sheet_m365_services_counts.write,     m365_usage_active_users_services or [])
+    _if("M365_Activity_Counts",   sheet_m365_activity_counts.write,     m365_usage_active_users_activity or [])
+    _if("M365_Active_Counts",     sheet_m365_active_user_counts.write,  m365_usage_active_user_counts or [])
+    _if("M365_Active_Users",      sheet_m365_active_users_detail.write, m365_usage_active_users_detail or [])
+    _if("M365_ProPlus_Platforms", sheet_m365_proplus_platforms.write,   m365_usage_proplus_platforms or [])
+    _if("M365_ProPlus_Counts",    sheet_m365_proplus_counts.write,      m365_usage_proplus_counts or [])
+    _if("M365_ProPlus_Users",     sheet_m365_proplus_detail.write,      m365_usage_proplus_detail or [])
+    _if("Billing_Licences",       sheet_billing_licences.write,         billing_licences or [])
+    _if("AzureMonitor_Health",    sheet_az_health.write,                health_detail or [])
+    _if("CrossRef_Summary",       sheet_crossref.write,                 crossref_summary or [])
 
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     wb.save(output_path)

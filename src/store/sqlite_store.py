@@ -841,6 +841,149 @@ CREATE TABLE IF NOT EXISTS tokenomics_entitlement_per_user (
 CREATE INDEX IF NOT EXISTS idx_tokenomics_per_agent_agent ON tokenomics_entitlement_per_agent(agent_id);
 CREATE INDEX IF NOT EXISTS idx_tokenomics_per_agent_env   ON tokenomics_entitlement_per_agent(environment_id);
 CREATE INDEX IF NOT EXISTS idx_tokenomics_per_user_user   ON tokenomics_entitlement_per_user(user_id);
+
+-- ── M365 Admin Center — Office 365 / M365 Apps Usage Reports (CSV import) ─
+
+CREATE TABLE IF NOT EXISTS m365_usage_activations_users (
+    user_principal_name TEXT NOT NULL,
+    product_type        TEXT NOT NULL,
+    report_refresh_date TEXT,
+    display_name        TEXT,
+    last_activated_date TEXT,
+    windows             INTEGER DEFAULT 0,
+    mac                 INTEGER DEFAULT 0,
+    windows_10_mobile   INTEGER DEFAULT 0,
+    ios                 INTEGER DEFAULT 0,
+    android             INTEGER DEFAULT 0,
+    shared_computer     INTEGER DEFAULT 0,
+    PRIMARY KEY (user_principal_name, product_type)
+);
+
+CREATE TABLE IF NOT EXISTS m365_usage_active_users_services (
+    report_refresh_date TEXT NOT NULL,
+    report_period       TEXT NOT NULL,
+    exchange_active     INTEGER,
+    exchange_inactive   INTEGER,
+    onedrive_active     INTEGER,
+    onedrive_inactive   INTEGER,
+    sharepoint_active   INTEGER,
+    sharepoint_inactive INTEGER,
+    skype_active        INTEGER,
+    skype_inactive      INTEGER,
+    yammer_active       INTEGER,
+    yammer_inactive     INTEGER,
+    teams_active        INTEGER,
+    teams_inactive      INTEGER,
+    office365_active    INTEGER,
+    office365_inactive  INTEGER,
+    PRIMARY KEY (report_refresh_date, report_period)
+);
+
+CREATE TABLE IF NOT EXISTS m365_usage_active_users_activity (
+    report_date         TEXT NOT NULL,
+    report_period       TEXT NOT NULL,
+    report_refresh_date TEXT,
+    exchange            INTEGER,
+    onedrive            INTEGER,
+    sharepoint          INTEGER,
+    skype               INTEGER,
+    yammer              INTEGER,
+    teams               INTEGER,
+    PRIMARY KEY (report_date, report_period)
+);
+
+CREATE TABLE IF NOT EXISTS m365_usage_active_user_counts (
+    report_date         TEXT NOT NULL,
+    report_period       TEXT NOT NULL,
+    report_refresh_date TEXT,
+    office365           INTEGER,
+    exchange            INTEGER,
+    onedrive            INTEGER,
+    sharepoint          INTEGER,
+    skype               INTEGER,
+    yammer              INTEGER,
+    teams               INTEGER,
+    PRIMARY KEY (report_date, report_period)
+);
+
+CREATE TABLE IF NOT EXISTS m365_usage_active_users_detail (
+    user_principal_name      TEXT PRIMARY KEY,
+    report_refresh_date      TEXT,
+    display_name             TEXT,
+    is_deleted               INTEGER DEFAULT 0,
+    deleted_date             TEXT,
+    has_exchange             INTEGER DEFAULT 0,
+    has_onedrive             INTEGER DEFAULT 0,
+    has_sharepoint           INTEGER DEFAULT 0,
+    has_skype                INTEGER DEFAULT 0,
+    has_yammer               INTEGER DEFAULT 0,
+    has_teams                INTEGER DEFAULT 0,
+    exchange_last_activity   TEXT,
+    onedrive_last_activity   TEXT,
+    sharepoint_last_activity TEXT,
+    skype_last_activity      TEXT,
+    yammer_last_activity     TEXT,
+    teams_last_activity      TEXT,
+    exchange_license_date    TEXT,
+    onedrive_license_date    TEXT,
+    sharepoint_license_date  TEXT,
+    skype_license_date       TEXT,
+    yammer_license_date      TEXT,
+    teams_license_date       TEXT,
+    assigned_products        TEXT
+);
+
+CREATE TABLE IF NOT EXISTS m365_usage_proplus_platforms (
+    report_date         TEXT NOT NULL,
+    report_period       TEXT NOT NULL,
+    report_refresh_date TEXT,
+    windows             INTEGER,
+    mac                 INTEGER,
+    mobile              INTEGER,
+    web                 INTEGER,
+    PRIMARY KEY (report_date, report_period)
+);
+
+CREATE TABLE IF NOT EXISTS m365_usage_proplus_counts (
+    report_date         TEXT NOT NULL,
+    report_period       TEXT NOT NULL,
+    report_refresh_date TEXT,
+    outlook             INTEGER,
+    word                INTEGER,
+    excel               INTEGER,
+    powerpoint          INTEGER,
+    onenote             INTEGER,
+    teams               INTEGER,
+    PRIMARY KEY (report_date, report_period)
+);
+
+CREATE TABLE IF NOT EXISTS m365_usage_proplus_detail (
+    user_principal_name  TEXT PRIMARY KEY,
+    report_refresh_date  TEXT,
+    last_activation_date TEXT,
+    last_activity_date   TEXT,
+    report_period        TEXT,
+    windows              INTEGER DEFAULT 0,
+    mac                  INTEGER DEFAULT 0,
+    mobile               INTEGER DEFAULT 0,
+    web                  INTEGER DEFAULT 0,
+    outlook              INTEGER DEFAULT 0,
+    word                 INTEGER DEFAULT 0,
+    excel                INTEGER DEFAULT 0,
+    powerpoint           INTEGER DEFAULT 0,
+    onenote              INTEGER DEFAULT 0,
+    teams                INTEGER DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS billing_licences (
+    product_title      TEXT PRIMARY KEY,
+    total_licenses     INTEGER,
+    expired_licenses   INTEGER,
+    assigned_licenses  INTEGER,
+    status_message     TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_m365_activations_upn ON m365_usage_activations_users(user_principal_name);
 """
 
 
@@ -2399,6 +2542,210 @@ class SqliteStore:
     def fetch_pp_bot_topic_analytics(self) -> list[dict]:
         rows = self._conn.execute(
             "SELECT * FROM pp_bot_topic_analytics ORDER BY bot_id, topic_name"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    # ------------------------------------------------------------------
+    # M365 Admin Center — Office 365 / M365 Apps usage CSV imports
+    # ------------------------------------------------------------------
+
+    def upsert_m365_usage_activations_users(self, rows: list[dict]) -> int:
+        written = 0
+        with self._conn:
+            for r in rows:
+                cur = self._conn.execute(
+                    """INSERT OR REPLACE INTO m365_usage_activations_users VALUES
+                    (?,?,?,?,?,?,?,?,?,?,?)""",
+                    (r.get('user_principal_name'), r.get('product_type'),
+                     r.get('report_refresh_date'), r.get('display_name'),
+                     r.get('last_activated_date'), r.get('windows'), r.get('mac'),
+                     r.get('windows_10_mobile'), r.get('ios'), r.get('android'),
+                     r.get('shared_computer')),
+                )
+                written += cur.rowcount
+        return written
+
+    def fetch_m365_usage_activations_users(self) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM m365_usage_activations_users ORDER BY user_principal_name, product_type"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def upsert_m365_usage_active_users_services(self, rows: list[dict]) -> int:
+        written = 0
+        with self._conn:
+            for r in rows:
+                cur = self._conn.execute(
+                    """INSERT OR REPLACE INTO m365_usage_active_users_services VALUES
+                    (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (r.get('report_refresh_date'), r.get('report_period'),
+                     r.get('exchange_active'), r.get('exchange_inactive'),
+                     r.get('onedrive_active'), r.get('onedrive_inactive'),
+                     r.get('sharepoint_active'), r.get('sharepoint_inactive'),
+                     r.get('skype_active'), r.get('skype_inactive'),
+                     r.get('yammer_active'), r.get('yammer_inactive'),
+                     r.get('teams_active'), r.get('teams_inactive'),
+                     r.get('office365_active'), r.get('office365_inactive')),
+                )
+                written += cur.rowcount
+        return written
+
+    def fetch_m365_usage_active_users_services(self) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM m365_usage_active_users_services ORDER BY report_refresh_date DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def upsert_m365_usage_active_users_activity(self, rows: list[dict]) -> int:
+        written = 0
+        with self._conn:
+            for r in rows:
+                cur = self._conn.execute(
+                    """INSERT OR REPLACE INTO m365_usage_active_users_activity VALUES
+                    (?,?,?,?,?,?,?,?,?)""",
+                    (r.get('report_date'), r.get('report_period'),
+                     r.get('report_refresh_date'), r.get('exchange'),
+                     r.get('onedrive'), r.get('sharepoint'),
+                     r.get('skype'), r.get('yammer'), r.get('teams')),
+                )
+                written += cur.rowcount
+        return written
+
+    def fetch_m365_usage_active_users_activity(self) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM m365_usage_active_users_activity ORDER BY report_date DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def upsert_m365_usage_active_user_counts(self, rows: list[dict]) -> int:
+        written = 0
+        with self._conn:
+            for r in rows:
+                cur = self._conn.execute(
+                    """INSERT OR REPLACE INTO m365_usage_active_user_counts VALUES
+                    (?,?,?,?,?,?,?,?,?,?)""",
+                    (r.get('report_date'), r.get('report_period'),
+                     r.get('report_refresh_date'), r.get('office365'),
+                     r.get('exchange'), r.get('onedrive'), r.get('sharepoint'),
+                     r.get('skype'), r.get('yammer'), r.get('teams')),
+                )
+                written += cur.rowcount
+        return written
+
+    def fetch_m365_usage_active_user_counts(self) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM m365_usage_active_user_counts ORDER BY report_date DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def upsert_m365_usage_active_users_detail(self, rows: list[dict]) -> int:
+        written = 0
+        with self._conn:
+            for r in rows:
+                cur = self._conn.execute(
+                    """INSERT OR REPLACE INTO m365_usage_active_users_detail VALUES
+                    (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (r.get('user_principal_name'), r.get('report_refresh_date'),
+                     r.get('display_name'), r.get('is_deleted'), r.get('deleted_date'),
+                     r.get('has_exchange'), r.get('has_onedrive'), r.get('has_sharepoint'),
+                     r.get('has_skype'), r.get('has_yammer'), r.get('has_teams'),
+                     r.get('exchange_last_activity'), r.get('onedrive_last_activity'),
+                     r.get('sharepoint_last_activity'), r.get('skype_last_activity'),
+                     r.get('yammer_last_activity'), r.get('teams_last_activity'),
+                     r.get('exchange_license_date'), r.get('onedrive_license_date'),
+                     r.get('sharepoint_license_date'), r.get('skype_license_date'),
+                     r.get('yammer_license_date'), r.get('teams_license_date'),
+                     r.get('assigned_products')),
+                )
+                written += cur.rowcount
+        return written
+
+    def fetch_m365_usage_active_users_detail(self) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM m365_usage_active_users_detail ORDER BY user_principal_name"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def upsert_m365_usage_proplus_platforms(self, rows: list[dict]) -> int:
+        written = 0
+        with self._conn:
+            for r in rows:
+                cur = self._conn.execute(
+                    """INSERT OR REPLACE INTO m365_usage_proplus_platforms VALUES
+                    (?,?,?,?,?,?,?)""",
+                    (r.get('report_date'), r.get('report_period'),
+                     r.get('report_refresh_date'), r.get('windows'),
+                     r.get('mac'), r.get('mobile'), r.get('web')),
+                )
+                written += cur.rowcount
+        return written
+
+    def fetch_m365_usage_proplus_platforms(self) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM m365_usage_proplus_platforms ORDER BY report_date DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def upsert_m365_usage_proplus_counts(self, rows: list[dict]) -> int:
+        written = 0
+        with self._conn:
+            for r in rows:
+                cur = self._conn.execute(
+                    """INSERT OR REPLACE INTO m365_usage_proplus_counts VALUES
+                    (?,?,?,?,?,?,?,?,?)""",
+                    (r.get('report_date'), r.get('report_period'),
+                     r.get('report_refresh_date'), r.get('outlook'),
+                     r.get('word'), r.get('excel'), r.get('powerpoint'),
+                     r.get('onenote'), r.get('teams')),
+                )
+                written += cur.rowcount
+        return written
+
+    def fetch_m365_usage_proplus_counts(self) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM m365_usage_proplus_counts ORDER BY report_date DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def upsert_m365_usage_proplus_detail(self, rows: list[dict]) -> int:
+        written = 0
+        with self._conn:
+            for r in rows:
+                cur = self._conn.execute(
+                    """INSERT OR REPLACE INTO m365_usage_proplus_detail VALUES
+                    (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (r.get('user_principal_name'), r.get('report_refresh_date'),
+                     r.get('last_activation_date'), r.get('last_activity_date'),
+                     r.get('report_period'), r.get('windows'), r.get('mac'),
+                     r.get('mobile'), r.get('web'), r.get('outlook'),
+                     r.get('word'), r.get('excel'), r.get('powerpoint'),
+                     r.get('onenote'), r.get('teams')),
+                )
+                written += cur.rowcount
+        return written
+
+    def fetch_m365_usage_proplus_detail(self) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM m365_usage_proplus_detail ORDER BY user_principal_name"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def upsert_billing_licences(self, rows: list[dict]) -> int:
+        written = 0
+        with self._conn:
+            for r in rows:
+                cur = self._conn.execute(
+                    """INSERT OR REPLACE INTO billing_licences VALUES (?,?,?,?,?)""",
+                    (r.get('product_title'), r.get('total_licenses'),
+                     r.get('expired_licenses'), r.get('assigned_licenses'),
+                     r.get('status_message')),
+                )
+                written += cur.rowcount
+        return written
+
+    def fetch_billing_licences(self) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM billing_licences ORDER BY product_title"
         ).fetchall()
         return [dict(r) for r in rows]
 

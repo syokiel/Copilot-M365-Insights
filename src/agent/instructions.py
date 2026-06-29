@@ -32,6 +32,11 @@ limit. To avoid hitting that limit:
 | Drill into one conversation | `get_conversation_detail` | — |
 | Credit / tokenomics | `run_sql` → tokenomics_entitlement_per_agent | — |
 | Viva Insights hours | `get_viva_insights` | — |
+| License seat utilization | `run_sql` → billing_licences | — |
+| Service adoption rates | `run_sql` → m365_usage_active_users_services | m365_usage_active_users_detail for per-user |
+| Inactive licensed users | `run_sql` → m365_usage_active_users_detail | — |
+| ProPlus app usage / trends | `run_sql` → m365_usage_proplus_counts | m365_usage_proplus_detail for per-user |
+| Never-activated products | `run_sql` → m365_usage_activations_users | — |
 
 Default to **production traffic** (design_mode=false) unless the user asks about test traffic.
 
@@ -83,6 +88,26 @@ Never surface a raw `agent_id` in a response — always resolve to a display nam
 - `dim_agent_journey_persona` — maps agent_id → journey_name + persona_type
   Join to viva_reports_cs_session_metrics on agent_id to add persona/journey context
 
+**License & M365 usage (CSV import — M365 Admin Center)**
+- `billing_licences` — license inventory per SKU: product_title, total_licenses, assigned_licenses, expired_licenses
+  Primary use: seat utilization, unassigned count, assignment rate by product
+- `m365_usage_active_users_services` — tenant-level snapshot: active/inactive user counts per service
+  Cols: report_refresh_date, report_period, exchange_active/inactive, onedrive_active/inactive, sharepoint_active/inactive, teams_active/inactive, yammer_active/inactive, office365_active/inactive
+- `m365_usage_active_users_activity` — 30-day daily activity counts per service (Exchange, OneDrive, SharePoint, Skype, Yammer, Teams)
+  PK: (report_date, report_period)
+- `m365_usage_active_user_counts` — 30-day daily active user counts per service
+  PK: (report_date, report_period)
+- `m365_usage_active_users_detail` — per-user service license flags + last activity dates
+  Cols: user_principal_name, has_exchange/onedrive/sharepoint/skype/yammer/teams (0/1), *_last_activity, *_license_date, assigned_products
+  Primary use: inactive licensed user analysis (has_X=1 AND X_last_activity='')
+- `m365_usage_activations_users` — per-user per-product activation status
+  Cols: user_principal_name, product_type, last_activated_date, windows/mac/ios/android/shared_computer (0/1)
+  Primary use: never-activated count (last_activated_date='') by product_type
+- `m365_usage_proplus_platforms` — 30-day daily ProPlus platform counts (Windows, Mac, Mobile, Web)
+- `m365_usage_proplus_counts` — 30-day daily ProPlus app active user counts (Outlook, Word, Excel, PowerPoint, OneNote, Teams)
+- `m365_usage_proplus_detail` — per-user ProPlus platform + app active flags (0/1)
+  Cols: user_principal_name, windows/mac/mobile/web, outlook/word/excel/powerpoint/onenote/teams
+
 ## Essential SQL patterns (use with run_sql)
 
 ```sql
@@ -131,6 +156,58 @@ SELECT m.persona_type, m.journey_name,
 FROM viva_reports_cs_session_metrics s
 JOIN dim_agent_journey_persona m ON m.agent_id = s.agent_id
 GROUP BY m.persona_type, m.journey_name ORDER BY completion_pct DESC LIMIT 20
+
+-- License utilization — unassigned seats by SKU:
+SELECT product_title, total_licenses, assigned_licenses,
+       total_licenses - assigned_licenses AS unassigned,
+       ROUND(assigned_licenses * 100.0 / NULLIF(total_licenses, 0), 1) AS assignment_pct
+FROM billing_licences
+WHERE total_licenses - assigned_licenses > 0
+ORDER BY unassigned DESC LIMIT 20
+
+-- Copilot-specific license utilization:
+SELECT product_title, total_licenses, assigned_licenses,
+       total_licenses - assigned_licenses AS unassigned
+FROM billing_licences
+WHERE product_title LIKE '%Copilot%' OR product_title LIKE '%copilot%'
+ORDER BY unassigned DESC
+
+-- Service adoption snapshot (most recent):
+SELECT report_refresh_date,
+       exchange_active,  exchange_active  + exchange_inactive  AS exchange_total,
+       teams_active,     teams_active     + teams_inactive     AS teams_total,
+       onedrive_active,  onedrive_active  + onedrive_inactive  AS onedrive_total,
+       sharepoint_active,sharepoint_active+ sharepoint_inactive AS sharepoint_total,
+       office365_active, office365_active + office365_inactive AS o365_total
+FROM m365_usage_active_users_services
+ORDER BY report_refresh_date DESC LIMIT 1
+
+-- Inactive licensed users by service (production users only):
+SELECT
+  SUM(CASE WHEN has_exchange   = 1 THEN 1 ELSE 0 END) AS exchange_licensed,
+  SUM(CASE WHEN has_exchange   = 1 AND (exchange_last_activity   IS NULL OR exchange_last_activity   = '') THEN 1 ELSE 0 END) AS exchange_inactive,
+  SUM(CASE WHEN has_teams      = 1 THEN 1 ELSE 0 END) AS teams_licensed,
+  SUM(CASE WHEN has_teams      = 1 AND (teams_last_activity      IS NULL OR teams_last_activity      = '') THEN 1 ELSE 0 END) AS teams_inactive,
+  SUM(CASE WHEN has_onedrive   = 1 THEN 1 ELSE 0 END) AS onedrive_licensed,
+  SUM(CASE WHEN has_onedrive   = 1 AND (onedrive_last_activity   IS NULL OR onedrive_last_activity   = '') THEN 1 ELSE 0 END) AS onedrive_inactive
+FROM m365_usage_active_users_detail
+WHERE is_deleted = 0
+
+-- Never-activated product assignments:
+SELECT product_type,
+       COUNT(*) AS never_activated,
+       COUNT(*) * 100.0 / (SELECT COUNT(*) FROM m365_usage_activations_users a2 WHERE a2.product_type = m.product_type) AS pct_never
+FROM m365_usage_activations_users m
+WHERE last_activated_date IS NULL OR last_activated_date = ''
+GROUP BY product_type ORDER BY never_activated DESC LIMIT 15
+
+-- ProPlus app active users (last 30 days, most recent):
+SELECT report_date, outlook, word, excel, powerpoint, onenote, teams
+FROM m365_usage_proplus_counts ORDER BY report_date DESC LIMIT 1
+
+-- ProPlus platform split:
+SELECT report_date, windows, mac, mobile, web
+FROM m365_usage_proplus_platforms ORDER BY report_date DESC LIMIT 1
 ```
 
 ## Response style
@@ -146,4 +223,7 @@ GROUP BY m.persona_type, m.journey_name ORDER BY completion_pct DESC LIMIT 20
 - `az_*` tables are empty until Application Insights is configured for the agents.
 - `viva_reports_cs_*` tables require the Copilot Studio agents report to have been imported.
 - DLP policies require Power Platform Admin role on the sync service principal.
+- `billing_licences`, `m365_usage_*` tables are populated from manual CSV exports from the M365 Admin Center.
+  They reflect the snapshot date of the most recently imported file, not real-time license state.
+  The `report_refresh_date` / `report_date` columns show the data currency.
 """
