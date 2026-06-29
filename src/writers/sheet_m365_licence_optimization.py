@@ -58,6 +58,24 @@ def write(
 
     snap_date = snap.get("report_refresh_date", "")
 
+    # Users with no activity in any service (licensed, not deleted)
+    _active_detail = [r for r in active_users_detail if not r.get("is_deleted")]
+    _any_licensed  = [
+        r for r in _active_detail
+        if r.get("has_exchange") or r.get("has_onedrive") or r.get("has_sharepoint")
+        or r.get("has_teams") or r.get("has_yammer")
+    ]
+    fully_inactive = [
+        r for r in _any_licensed
+        if not r.get("exchange_last_activity")
+        and not r.get("onedrive_last_activity")
+        and not r.get("sharepoint_last_activity")
+        and not r.get("teams_last_activity")
+        and not r.get("yammer_last_activity")
+    ]
+    fully_inactive_count = len(fully_inactive)
+    fully_inactive_pct   = round(fully_inactive_count / len(_any_licensed) * 100, 1) if _any_licensed else 0.0
+
     # ── Section 3: Inactive licensed users (per-user detail) ─────────────────
     def _inactive_count(has_key: str, activity_key: str) -> tuple[int, int]:
         licensed = [r for r in active_users_detail if r.get(has_key) and not r.get("is_deleted")]
@@ -131,6 +149,8 @@ def write(
         ("  Teams",      f"{t_pct}%  ({_fmt(t_a)} active  /  {_fmt(t_a + t_i)} total)"),
         ("  Yammer",     f"{ym_pct}%  ({_fmt(ym_a)} active  /  {_fmt(ym_a + ym_i)} total)"),
         ("  Office 365", f"{o365_pct}%  ({_fmt(o365_a)} active  /  {_fmt(o365_a + o365_i)} total)"),
+        ("  Users inactive across all services",
+         f"{_fmt(fully_inactive_count)}  ({fully_inactive_pct}% of licensed users)"),
     ]
 
     # ── Section 4: Inactive licensed users ────────────────────────────────────
@@ -225,6 +245,19 @@ def write(
                 else:
                     a.fill = _ALERT_FILL; b.fill = _ALERT_FILL
             except (ValueError, TypeError):
+                pass
+
+        # Fully-inactive users line
+        elif metric == "  Users inactive across all services":
+            try:
+                pct_v = float(val_str.split("(")[1].split("%")[0].strip())
+                if pct_v == 0:
+                    a.fill = _GOOD_FILL;  b.fill = _GOOD_FILL
+                elif pct_v < 10:
+                    a.fill = _WARN_FILL;  b.fill = _WARN_FILL
+                else:
+                    a.fill = _ALERT_FILL; b.fill = _ALERT_FILL
+            except (ValueError, TypeError, IndexError):
                 pass
 
         # Inactive licensed user lines
