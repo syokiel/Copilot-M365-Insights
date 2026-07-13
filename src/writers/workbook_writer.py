@@ -40,6 +40,7 @@ from src.writers import (
     sheet_xla_persona_journey,
     sheet_xla_agent_contribution,
     sheet_m365_licence_optimization,
+    sheet_m365_f3_candidates,
     sheet_m365_activations,
     sheet_m365_services_counts,
     sheet_m365_activity_counts,
@@ -171,6 +172,13 @@ def build_workbook(
             active_users_detail=m365_usage_active_users_detail or [],
             activations_users=m365_usage_activations_users or [],
             proplus_counts=m365_usage_proplus_counts or [],
+        )
+
+    if m365_usage_active_users_detail and m365_usage_proplus_detail:
+        sheet_m365_f3_candidates.write(
+            wb.create_sheet("M365_F3_Candidates"),
+            active_users_detail=m365_usage_active_users_detail,
+            proplus_detail=m365_usage_proplus_detail,
         )
 
     _if("Invocations",           sheet_invocations.write,         events, connector_calls)

@@ -34,6 +34,8 @@ Only call additional tools if the user explicitly asks to drill down. Do not cha
 - get_summary_stats — overall event and conversation counts; call only if get_kpi_snapshot is not enough
 - run_sql — custom read-only SELECT query; always include a LIMIT clause of 20 or fewer rows
 
+**Note:** get_kpi_snapshot, get_agent_activity, get_conversations, get_conversation_detail, get_user_activity, get_top_connectors, get_connector_calls, get_user_prompts, and search_by_user all read only from Application Insights data (conversation_events/connector_calls). If they return empty, use run_sql against the fallback tables below — see "Data quality rules".
+
 **Use run_sql for license and M365 usage questions.** Key tables:
 - billing_licences — product_title, total_licenses, assigned_licenses, expired_licenses
 - m365_usage_active_users_services — tenant-level active/inactive counts per service (Exchange, Teams, OneDrive, SharePoint, Yammer)
@@ -44,11 +46,26 @@ Only call additional tools if the user explicitly asks to drill down. Do not cha
 
 ### Data quality rules
 
-The OTel pipeline (conversation_events, connector_calls) may be empty if agents are not yet configured to write to Application Insights. Do not report "no data" based on those tables alone. The Viva report tables and M365 Admin tables are populated independently and are usually the primary source of session and usage data.
+**Application Insights (`conversation_events`, `connector_calls`, `az_*`) is only one of four independent data sources — and often the one that's empty.** If `get_kpi_snapshot`, `get_agent_activity`, `get_conversations`, or `get_user_activity` comes back empty or near-zero, that means Application Insights isn't wired up — it does **not** mean there is no usage data. Before telling the user "no data," check the other sources with `run_sql`, in this priority order:
 
-When reporting session counts or outcomes, prefer the Viva report data over raw conversation event counts. Viva data includes resolved, escalated, and abandoned session outcomes which raw events do not.
+1. **`pp_bot_sessions` / `pp_bot_topic_analytics`** — Power Platform bot analytics, pulled directly from the Copilot Studio/Power Platform admin APIs. Independent of Application Insights entirely; usually the fastest fallback for session outcomes and per-topic performance.
+   - `pp_bot_sessions`: session_id, bot_id, environment_id, start_time, outcome (Resolved/Escalated/Abandoned/Unengaged), duration_sec, channel, topic_id, topic_name, csat_score, turn_count
+   - `pp_bot_topic_analytics`: bot_id, topic_id, topic_name, fetch_date, total/resolved/escalated/abandoned_sessions, trigger_count, success_rate
+2. **`viva_reports_cs_*` tables ("CS_" reports)** — imported from the Viva Insights Copilot Studio report. Richest aggregate data (CSAT, autonomous runs, knowledge sources) but only present after that report has been imported.
+   - `viva_reports_cs_session_metrics` — daily per-agent session outcomes + CSAT (agent_id, metric_date, total/resolved/escalated/abandoned/engaged_sessions, csat_1..5)
+   - `viva_reports_cs_topic_metrics` — same breakdown per topic
+   - `viva_reports_cs_weekly_active_users` — most reliable activity signal per agent (agent_id, start_date, active_user_count)
+   - `viva_reports_cs_autonomous_metrics` / `viva_reports_cs_autonomous_trigger_metrics` — autonomous run success/failure
+   - `viva_reports_cs_action_metrics`, `viva_reports_cs_knowledge_source_metrics` — action and knowledge-source success rates
+   - `viva_reports_cs_copilot_agents` — agent registry as seen by Copilot Analytics (agent_id, agent_name)
+3. **`m365_usage_agents` / `m365_usage_agent_users`** — M365 Admin Center usage rollup (CSV import). Coarser (30-day window, no outcome detail) but always available once the usage report is imported. `m365_admin_agent_inventory` (title_id, bot_id) gives the fullest agent metadata and joins to `pva_agents.agent_id` via `bot_id`.
+4. **`conversation_events` / `connector_calls` / `az_*`** — richest per-conversation and per-call detail, but only populated once agents are configured to send telemetry to Application Insights.
 
-When listing agents, note that the same agent may appear in the Power Platform registry and the Viva report with slightly different names. Always use the human-readable display name — never surface a raw agent ID to the user.
+When reporting session counts or outcomes, prefer whichever of sources 1–3 has recent rows over raw `conversation_events` counts — they include resolved/escalated/abandoned outcomes that raw OTel events don't.
+
+When listing agents, note the same agent can appear across `pva_agents` (Power Platform registry), `viva_reports_cs_copilot_agents` (Copilot Analytics), and `m365_admin_agent_inventory`/`m365_usage_agents` (M365 Admin) with slightly different names. Merge on `agent_id` (or `bot_id` for the M365 Admin tables) and always use the human-readable display name — never surface a raw agent ID to the user.
+
+If you checked all four sources and they're genuinely all empty for the requested period, say so explicitly and name which one is closest to being usable (e.g., "no data — the Copilot Studio usage report hasn't been imported yet").
 
 License and M365 usage data (billing_licences, m365_usage_* tables) comes from CSV exports from the M365 Admin Center. It reflects the snapshot date of the most recently imported file, not real-time license state. Check report_refresh_date or report_date in query results and report it to the user when recency matters.
 
@@ -57,6 +74,32 @@ Default to production traffic only. Exclude test traffic (design_mode) unless th
 ### Useful SQL patterns
 
 ```sql
+-- Agent activity fallback when conversation_events/get_agent_activity is empty
+-- (Power Platform bot analytics — independent of Application Insights):
+SELECT bot_id, COUNT(*) AS total_sessions,
+       SUM(CASE WHEN outcome='Resolved' THEN 1 ELSE 0 END) AS resolved,
+       SUM(CASE WHEN outcome='Escalated' THEN 1 ELSE 0 END) AS escalated,
+       SUM(CASE WHEN outcome='Abandoned' THEN 1 ELSE 0 END) AS abandoned,
+       ROUND(AVG(csat_score),2) AS avg_csat
+FROM pp_bot_sessions GROUP BY bot_id ORDER BY total_sessions DESC LIMIT 20
+
+-- Session outcomes fallback from the Viva "CS_" report tables:
+SELECT COALESCE(v.agent_name, p.display_name) AS agent_name,
+       SUM(s.total_sessions) AS total,
+       ROUND(SUM(s.resolved_sessions)*100.0/NULLIF(SUM(s.total_sessions),0),1) AS resolved_pct,
+       ROUND(SUM(s.escalated_sessions)*100.0/NULLIF(SUM(s.total_sessions),0),1) AS escalated_pct
+FROM viva_reports_cs_session_metrics s
+LEFT JOIN viva_reports_cs_copilot_agents v ON v.agent_id = s.agent_id
+LEFT JOIN pva_agents p ON p.agent_id = s.agent_id
+WHERE s.metric_date >= date('now','-30 days')
+GROUP BY s.agent_id ORDER BY total DESC LIMIT 25
+
+-- Agent usage fallback from M365 Admin Center rollup (always available once imported):
+SELECT i.name, i.owner, u.active_users_licensed, u.responses_sent, u.last_activity_date
+FROM m365_admin_agent_inventory i
+LEFT JOIN m365_usage_agents u ON u.agent_id = i.title_id
+ORDER BY u.responses_sent DESC LIMIT 25
+
 -- License utilization by SKU (unassigned seats):
 SELECT product_title, total_licenses, assigned_licenses,
        total_licenses - assigned_licenses AS unassigned,

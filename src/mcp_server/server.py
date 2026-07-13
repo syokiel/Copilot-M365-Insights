@@ -238,6 +238,113 @@ Exceptions logged by the agent runtime in Application Insights.
 - exception_message: exception detail message
 - timestamp: when the exception was logged
 
+### pp_bot_sessions
+Per-session outcome log from Power Platform bot analytics APIs — independent of
+Application Insights, usually populated even when az_*/conversation_events are empty.
+- session_id, bot_id: joins to pva_agents.agent_id
+- environment_id, start_time, channel
+- outcome: Resolved | Escalated | Abandoned | Unengaged
+- duration_sec, topic_id, topic_name, csat_score, turn_count
+
+### pp_bot_topic_analytics
+Per-topic daily rollup from Power Platform bot analytics APIs.
+- bot_id, topic_id, topic_name, fetch_date, period_from, period_to
+- total_sessions, resolved_sessions, escalated_sessions, abandoned_sessions
+- trigger_count, success_rate
+
+### viva_reports_cs_session_metrics
+Daily per-agent session outcomes + CSAT, imported from the Viva Insights Copilot Studio
+report ("CS_" reports). Requires that report to have been imported — check sync_runs /
+report_refresh_date if empty.
+- agent_id, metric_date (PK)
+- total_sessions, resolved_sessions, escalated_sessions, abandoned_sessions, engaged_sessions, unengaged_sessions
+- csat_responses, csat_1..csat_5
+- avg_duration_all / _unengaged / _engaged / _resolved / _escalated / _abandoned
+- ks_engaged / ks_unengaged / ks_resolved / ks_escalated / ks_abandoned (knowledge-source counts)
+
+### viva_reports_cs_topic_metrics
+Same outcome breakdown as viva_reports_cs_session_metrics, split per topic.
+- agent_id, topic_id, topic_name, metric_date (PK)
+
+### viva_reports_cs_weekly_active_users
+Most reliable per-agent activity signal when conversation_events is empty.
+- agent_id, start_date (PK), active_user_count
+
+### viva_reports_cs_autonomous_metrics / viva_reports_cs_autonomous_trigger_metrics
+Daily autonomous (agentic) run success/failure, overall and per trigger.
+- agent_id, metric_date (+ trigger_schema_name for the trigger table)
+- total_runs, successful_runs, failed_runs, total/successful/failed_duration
+- ks_successful/failed, actions_successful/failed, no_op_successful/failed
+
+### viva_reports_cs_action_metrics
+Per-action success rates.
+- agent_id, action_schema_name, metric_date
+- total_runs, successful_actions_in_runs, actions_in_successful_runs, successful_actions_in_successful_runs
+
+### viva_reports_cs_knowledge_source_metrics
+Per-knowledge-source usage and outcome counts.
+- agent_id, source_type, metric_date
+- count_total, count_unengaged, count_engaged, count_resolved, count_escalated, count_abandoned, count_autonomous, count_successful_autonomous
+
+### viva_reports_cs_copilot_agents
+Agent registry as seen by Copilot Analytics — a second, independent agent list.
+- agent_id (PK), agent_name, description, surface, mode, categories, agent_type
+
+### viva_reports_cs_extended_metadata
+- agent_id (PK), aad_tenant_id, roi_configuration
+
+### m365_admin_agent_inventory
+Full Copilot Studio / Copilot agent inventory from the M365 Admin Center (CSV import).
+- title_id (PK) — joins to m365_usage_agents.agent_id
+- bot_id — joins to pva_agents.agent_id
+- name, status, channel, owner, publisher, platform, description
+- can_read_od_sp / can_read_sp_sites / can_extend_graph / can_generate_images / can_use_code_interpreter: capability flags
+
+### m365_usage_agents
+30-day rolling usage rollup per agent from the M365 Admin Center (CSV import). Coarser
+than viva_reports_cs_* (no outcome detail) but always available once imported.
+- agent_id (PK), agent_name, creator_type
+- active_users_licensed, active_users_unlicensed, responses_sent, last_activity_date
+
+### m365_usage_agent_users
+Per-user per-agent usage from the same M365 Admin rollup.
+- agent_id, username (PK), agent_name, creator_type, responses_sent, last_activity_date
+
+### dim_agent_journey_persona
+Maps agent_id to a journey_name + persona_type for the experience model.
+- agent_id, journey_name, persona_type (PK), agent_name
+
+### kpi_snapshots
+Pre-aggregated daily KPI row — backs the get_kpi_snapshot tool.
+- snapshot_date, lookback_days
+- License/adoption: total_licenses, enabled_users, active_users, activation_rate, adoption_rate, power_users, total_prompts, avg_prompts_per_user
+- Per-workload prompts: prompts_copilot_chat/teams/outlook/excel/word/powerpoint/onenote/loop
+- Agent adoption: agent_adopters, agent_adoption_pct
+- Agent inventory: total_agents, active_agents, utilization_rate, production_agents, non_prod_agents, total_conversations
+- Environment mix: env_default/developer/teams/production/sandbox/trial
+
+### billing_licences
+License inventory per SKU, imported from a CSV export (M365 Admin Center → Billing → Licenses).
+- product_title, total_licenses, assigned_licenses, expired_licenses
+NOTE: reflects the snapshot date of the most recently imported file, not real-time state.
+
+### m365_usage_active_users_services / _activity / _detail, m365_usage_active_user_counts
+Tenant-level and per-user active/inactive counts per M365 service (Exchange, Teams,
+OneDrive, SharePoint, Yammer, Office 365), imported from CSV. `_detail` has per-user
+license flags (has_exchange, has_teams, ...) and last-activity dates for inactive-user analysis.
+
+### m365_usage_activations_users
+Per-user per-product activation status (CSV import).
+- user_principal_name, product_type, last_activated_date, windows/mac/ios/android/shared_computer flags
+
+### m365_usage_proplus_counts / _detail / _platforms
+Daily active-user counts (and per-user flags) for M365 apps (Outlook, Word, Excel,
+PowerPoint, OneNote, Teams) and platforms (Windows, Mac, Mobile, Web). CSV import.
+
+### tokenomics_capacity_consumption / entitlement_consumption / entitlement_per_agent / entitlement_per_user
+Power Platform Admin credit/consumption data: daily resource burn, prepaid vs. PAYG per
+environment, and billed/non-billed credit per agent and per user.
+
 ### viva_person_insights
 Per-user weekly Viva Insights activity breakdown (Graph Analytics API).
 - user_id: Azure AD object ID — join to conversation_events.user_id
@@ -263,6 +370,26 @@ Azure Monitor alerts that fired against agent resources.
 - fired_time: when the alert fired
 - resource_id: Azure resource that triggered the alert
 
+## Data source priority — read this before reporting "no data"
+Application Insights (conversation_events, connector_calls, az_*) is only ONE of four
+independent data sources, and the one most likely to be empty (agents are frequently not
+yet configured to write to it). The built-in tools (get_kpi_snapshot, get_agent_activity,
+get_conversations, get_conversation_detail, get_user_activity, get_top_connectors,
+get_connector_calls, get_user_prompts, search_by_user) all read ONLY from
+conversation_events/connector_calls. If they return empty or near-zero, that means App
+Insights isn't wired up — it does NOT mean there is no usage data. Before concluding there
+is no data, query these fallback sources with run_sql, in priority order:
+1. pp_bot_sessions / pp_bot_topic_analytics — Power Platform bot analytics, independent of
+   App Insights entirely. Usually populated even in a fresh deployment.
+2. viva_reports_cs_* tables — richest aggregate (outcomes, CSAT, autonomous runs) but
+   requires the Viva Insights Copilot Studio report to have been imported.
+3. m365_usage_agents / m365_usage_agent_users — M365 Admin usage rollup (CSV import);
+   coarser but always available once imported.
+4. conversation_events / connector_calls / az_* — richest per-conversation detail, only
+   once App Insights is actually configured.
+If all four are empty for the requested period, say so explicitly and name the closest
+one to being usable (e.g. "the Copilot Studio usage report hasn't been imported yet").
+
 ## Key relationships
 conversation_events.conversation_id = connector_calls.conversation_id
 conversation_events.conversation_id = az_dependency_failures.conversation_id
@@ -270,6 +397,11 @@ conversation_events.conversation_id = az_exceptions.conversation_id
 pva_agents.environment_id = pva_environments.environment_id
 pva_agents.agent_id = pva_agent_solutions.agent_id
 pva_agents.agent_id = az_dependency_failures.agent_id (approximate — depends on agent config)
+pva_agents.agent_id = pp_bot_sessions.bot_id = pp_bot_topic_analytics.bot_id
+pva_agents.agent_id = viva_reports_cs_copilot_agents.agent_id = viva_reports_cs_session_metrics.agent_id
+pva_agents.agent_id = m365_admin_agent_inventory.bot_id
+m365_admin_agent_inventory.title_id = m365_usage_agents.agent_id = m365_usage_agent_users.agent_id
+dim_agent_journey_persona.agent_id joins any of the agent_id columns above for persona/journey context
 
 ## Cross-reference pattern
 To find conversations with both OTel failures AND Azure Monitor signals:
@@ -285,7 +417,12 @@ To find conversations with both OTel failures AND Azure Monitor signals:
 - Filter design_mode = 0 for production traffic only
 - user_id is an Azure AD object ID (Graph API lookup needed for email)
 - There is NO agent_name column in conversation_events or connector_calls — use pva_agents for agent names
-- az_* tables will be empty until agents are configured to write to Application Insights
+- az_*, conversation_events, connector_calls will be empty until agents are configured to write
+  to Application Insights — see "Data source priority" above before reporting no data
+- viva_reports_cs_* tables require the Copilot Studio usage report to have been imported
+- billing_licences, m365_usage_*, m365_admin_agent_inventory are populated from manual CSV
+  exports from the M365 Admin Center and reflect the snapshot date of the last import, not
+  real-time state — check report_refresh_date/report_date when recency matters
 """
 
 

@@ -25,8 +25,8 @@ limit. To avoid hitting that limit:
 | Question type | First call | Follow-up only if asked |
 |---|---|---|
 | Overview / health / KPIs | `get_kpi_snapshot` | `get_summary_stats` |
-| Which agents are active? | `get_agent_activity` | `get_agents` for detail |
-| Session outcomes / CSAT | `run_sql` → viva_reports_cs_session_metrics | — |
+| Which agents are active? | `get_agent_activity` | if empty: `run_sql` → pp_bot_sessions / m365_usage_agents |
+| Session outcomes / CSAT | `run_sql` → pp_bot_sessions or viva_reports_cs_session_metrics | — |
 | Connector failures | `get_top_connectors` | `get_connector_calls` for specifics |
 | Who is using agents? | `get_user_activity` | `search_by_user` for one person |
 | Drill into one conversation | `get_conversation_detail` | — |
@@ -41,14 +41,27 @@ limit. To avoid hitting that limit:
 Default to **production traffic** (design_mode=false) unless the user asks about test traffic.
 
 ## Data source priority
-The OTel pipeline (`conversation_events`, `connector_calls`) may be empty if agents are not
-yet configured to write to Application Insights. Never report "no data" based on those tables
-alone — the Viva report tables and Power Platform registry are populated independently.
+Application Insights (`conversation_events`, `connector_calls`, `az_*`) is one of four
+independent data sources, and often the empty one — agents are frequently not yet configured
+to write to it. If `get_kpi_snapshot`, `get_agent_activity`, `get_conversations`, or
+`get_user_activity` comes back empty or near-zero, that means App Insights isn't wired up,
+**not** that there is no usage data. Never report "no data" without checking the other three
+sources first via `run_sql`.
 
 Priority order for session/usage questions:
-1. `viva_reports_cs_session_metrics` — richest aggregate (outcomes, CSAT, durations)
-2. `m365_usage_agents` / `m365_usage_agent_users` — M365 Admin usage rollup
-3. `conversation_events` — only for per-conversation or per-user drill-down
+1. `pp_bot_sessions` / `pp_bot_topic_analytics` — Power Platform bot analytics pulled directly
+   from the Copilot Studio/Power Platform admin APIs. Independent of App Insights entirely;
+   check this first since it's usually populated even in a fresh deployment.
+2. `viva_reports_cs_session_metrics` (and sibling `viva_reports_cs_*` tables) — richest
+   aggregate (outcomes, CSAT, durations, autonomous runs) but requires the Viva Insights
+   Copilot Studio report to have been imported.
+3. `m365_usage_agents` / `m365_usage_agent_users` — M365 Admin usage rollup (CSV import);
+   coarser 30-day window but always available once that report is imported.
+4. `conversation_events` / `connector_calls` — only for per-conversation or per-user
+   drill-down, and only once App Insights is actually configured for the agent.
+
+If all four are empty for the requested period, say so explicitly and name which source is
+closest to being usable (e.g. "the Copilot Studio usage report hasn't been imported yet").
 
 ## Agent name resolution
 Two parallel registries exist. Always merge them so no agent is missed:
@@ -59,6 +72,12 @@ Join key: `agent_id`. The same agent may appear in one or both with slightly dif
 Never surface a raw `agent_id` in a response — always resolve to a display name.
 
 ## Key tables reference
+
+**Power Platform bot analytics (independent of App Insights — check first if OTel is empty)**
+- `pp_bot_sessions` — per-session outcome log
+  Cols: session_id, bot_id, environment_id, start_time, outcome (Resolved/Escalated/Abandoned/Unengaged), duration_sec, channel, topic_id, topic_name, csat_score, turn_count
+- `pp_bot_topic_analytics` — per-topic daily rollup
+  Cols: bot_id, topic_id, topic_name, fetch_date, total/resolved/escalated/abandoned_sessions, trigger_count, success_rate
 
 **Session quality**
 - `viva_reports_cs_session_metrics` — daily session outcomes + CSAT per agent
@@ -111,6 +130,15 @@ Never surface a raw `agent_id` in a response — always resolve to a display nam
 ## Essential SQL patterns (use with run_sql)
 
 ```sql
+-- Agent activity fallback when conversation_events/get_agent_activity is empty
+-- (Power Platform bot analytics — independent of Application Insights):
+SELECT bot_id, COUNT(*) AS total_sessions,
+       SUM(CASE WHEN outcome='Resolved' THEN 1 ELSE 0 END) AS resolved,
+       SUM(CASE WHEN outcome='Escalated' THEN 1 ELSE 0 END) AS escalated,
+       SUM(CASE WHEN outcome='Abandoned' THEN 1 ELSE 0 END) AS abandoned,
+       ROUND(AVG(csat_score),2) AS avg_csat
+FROM pp_bot_sessions GROUP BY bot_id ORDER BY total_sessions DESC LIMIT 20
+
 -- Agent list merging both registries:
 SELECT COALESCE(v.agent_name, p.display_name) AS agent_name,
        COALESCE(v.agent_id, p.agent_id) AS agent_id,
@@ -220,7 +248,7 @@ FROM m365_usage_proplus_platforms ORDER BY report_date DESC LIMIT 1
 ## Limits
 - All tools are read-only. You cannot modify data.
 - Data may be up to 24 hours old — check `last_synced` from `get_summary_stats` if recency matters.
-- `az_*` tables are empty until Application Insights is configured for the agents.
+- `az_*`, `conversation_events`, `connector_calls` are empty until Application Insights is configured for the agents — check `pp_bot_sessions`, `viva_reports_cs_*`, or `m365_usage_agents` before reporting no data.
 - `viva_reports_cs_*` tables require the Copilot Studio agents report to have been imported.
 - DLP policies require Power Platform Admin role on the sync service principal.
 - `billing_licences`, `m365_usage_*` tables are populated from manual CSV exports from the M365 Admin Center.

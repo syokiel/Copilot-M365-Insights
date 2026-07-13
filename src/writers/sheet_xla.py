@@ -92,6 +92,24 @@ def write(
                     if r.get("person_id") and (r.get("total_copilot_actions") or 0) > 0}
     peak_wau     = max((r.get("active_user_count") or 0 for r in wau), default=0)
 
+    # ── Pre-aggregate monthly + WAU (used in Adoption Health and trend tables) ─
+    monthly: dict[str, dict] = defaultdict(lambda: defaultdict(int))
+    for r in sess:
+        d = r.get("metric_date", "")
+        if len(d) >= 7:
+            m = d[:7]
+            monthly[m]["total"]     += r.get("total_sessions")    or 0
+            monthly[m]["engaged"]   += r.get("engaged_sessions")  or 0
+            monthly[m]["resolved"]  += r.get("resolved_sessions") or 0
+            monthly[m]["escalated"] += r.get("escalated_sessions") or 0
+            monthly[m]["abandoned"] += r.get("abandoned_sessions") or 0
+
+    wau_by_week: dict[str, int] = defaultdict(int)
+    for r in wau:
+        sd = r.get("start_date", "")
+        if sd:
+            wau_by_week[sd] += r.get("active_user_count") or 0
+
     # ── Column widths ──────────────────────────────────────────────────────
     ws.column_dimensions["A"].width = 26
     ws.column_dimensions["B"].width = 42
@@ -210,6 +228,102 @@ def write(
              "kpi_snapshots.ownership_pct")
     row += 2
 
+    # ── Readiness vs. Adoption — Supported Indicators ─────────────────────
+    section("📉  Readiness vs. Adoption — Supported Indicators")
+
+    month_keys = sorted(monthly.keys())
+    wau_keys   = sorted(wau_by_week.keys())
+
+    def _rate(num, denom) -> float:
+        return num / denom * 100 if denom else 0.0
+
+    # Workflow Adoption — journey completion trend (first vs. latest month)
+    if len(month_keys) >= 2:
+        def _res(mk):
+            e = monthly[mk].get("engaged") or 0
+            return _rate(monthly[mk].get("resolved") or 0, e)
+        first_res, latest_res = _res(month_keys[0]), _res(month_keys[-1])
+        d = latest_res - first_res
+        dir_r = "↑ Growing" if d > 1 else ("↓ Declining" if d < -1 else "→ Stable")
+        mrow("Workflow Adoption",
+             "Journey Completion Trend (1st → latest month)",
+             f"{dir_r}  ({first_res:.1f}% → {latest_res:.1f}%)",
+             f"Resolved/Engaged: {month_keys[0]} → {month_keys[-1]}")
+
+    # Quiet Retreat — WAU momentum
+    if len(wau_keys) >= 8:
+        last_4 = [wau_by_week[w] for w in wau_keys[-4:]]
+        prev_4 = [wau_by_week[w] for w in wau_keys[-8:-4]]
+        l_avg, p_avg = sum(last_4) / 4, sum(prev_4) / 4
+        mom = _rate(l_avg - p_avg, p_avg)
+        dir_m = "↑ Growing" if mom > 5 else ("↓ Declining — retreat signal" if mom < -5 else "→ Stable")
+        mrow("Quiet Retreat Indicator",
+             "WAU Momentum (last 4 wks vs. prior 4 wks)",
+             f"{dir_m}  ({mom:+.1f}%)",
+             "AVG(last 4 weeks WAU) vs AVG(prior 4 weeks WAU) — viva_reports_cs_weekly_active_users")
+    elif len(wau_keys) >= 2:
+        fv, lv = wau_by_week[wau_keys[0]], wau_by_week[wau_keys[-1]]
+        mom = _rate(lv - fv, fv)
+        dir_m = "↑ Growing" if mom > 5 else ("↓ Declining — retreat signal" if mom < -5 else "→ Stable")
+        mrow("Quiet Retreat Indicator",
+             "WAU Change (first → latest week)",
+             f"{dir_m}  ({mom:+.1f}%  |  {fv} → {lv})",
+             "First vs. latest week WAU — viva_reports_cs_weekly_active_users")
+
+    # Quiet Retreat — abandonment rate trend
+    if len(month_keys) >= 2:
+        def _abn(mk):
+            e = monthly[mk].get("engaged") or 0
+            return _rate(monthly[mk].get("abandoned") or 0, e)
+        first_abn, latest_abn = _abn(month_keys[0]), _abn(month_keys[-1])
+        d = latest_abn - first_abn
+        dir_a = "↑ Rising — retreat signal" if d > 1 else ("↓ Falling" if d < -1 else "→ Stable")
+        mrow("Quiet Retreat Indicator",
+             "Abandonment Rate Trend (1st → latest month)",
+             f"{dir_a}  ({first_abn:.1f}% → {latest_abn:.1f}%)",
+             f"Abandoned/Engaged: {month_keys[0]} → {month_keys[-1]}")
+
+    # Hypercare Demand — escalation rate trend
+    if len(month_keys) >= 2:
+        def _esc(mk):
+            e = monthly[mk].get("engaged") or 0
+            return _rate(monthly[mk].get("escalated") or 0, e)
+        first_esc, latest_esc = _esc(month_keys[0]), _esc(month_keys[-1])
+        d = latest_esc - first_esc
+        dir_e = "↑ Rising — demand signal" if d > 1 else ("↓ Falling" if d < -1 else "→ Stable")
+        mrow("Hypercare Demand",
+             "Escalation Rate Trend (1st → latest month)",
+             f"{dir_e}  ({first_esc:.1f}% → {latest_esc:.1f}%)",
+             f"Escalated/Engaged: {month_keys[0]} → {month_keys[-1]}")
+
+    # Operating Model Durability — resolution rate consistency
+    if len(month_keys) >= 2:
+        res_rates = []
+        for mk in month_keys:
+            e = monthly[mk].get("engaged") or 0
+            r = monthly[mk].get("resolved") or 0
+            if e:
+                res_rates.append(r / e * 100)
+        if res_rates:
+            mn, mx = min(res_rates), max(res_rates)
+            spread = mx - mn
+            stability = "Stable" if spread < 5 else ("Moderate" if spread < 15 else "Variable")
+            mrow("Operating Model Durability",
+                 "Resolution Rate Consistency (monthly spread)",
+                 f"{stability}  ({mn:.1f}% – {mx:.1f}%,  ±{spread:.1f}pp spread)",
+                 "Min/max monthly Resolved/Engaged rate across window")
+
+    # System Reliance — agent WAU vs. M365 Copilot enabled users
+    if adopt_ids and wau_keys:
+        latest_wau_val = wau_by_week[wau_keys[-1]]
+        reliance_pct   = _rate(latest_wau_val, len(adopt_ids))
+        mrow("System Reliance",
+             "Agent WAU vs. M365 Copilot Enabled Users (latest week)",
+             f"{reliance_pct:.1f}%  ({latest_wau_val:,} WAU  /  {len(adopt_ids):,} enabled)",
+             "Latest week agent WAU ÷ COUNT(DISTINCT person_id) — viva_reports_copilot_adoption")
+
+    row += 1
+
     # ── Monthly Session Trend ──────────────────────────────────────────────
     ws.merge_cells(f"A{row}:F{row}")
     _set(ws, row, 1, "📅  Monthly Session Trend", font=_CAT_FONT, fill=_CAT_FILL)
@@ -221,17 +335,6 @@ def write(
     for ltr, w in [("E", 12), ("F", 12)]:
         ws.column_dimensions[ltr].width = w
     row += 1
-
-    monthly: dict[str, dict] = defaultdict(lambda: defaultdict(int))
-    for r in sess:
-        d = r.get("metric_date", "")
-        if len(d) >= 7:
-            m = d[:7]
-            monthly[m]["total"]     += r.get("total_sessions")    or 0
-            monthly[m]["engaged"]   += r.get("engaged_sessions")  or 0
-            monthly[m]["resolved"]  += r.get("resolved_sessions") or 0
-            monthly[m]["escalated"] += r.get("escalated_sessions") or 0
-            monthly[m]["abandoned"] += r.get("abandoned_sessions") or 0
 
     for month in sorted(monthly):
         m = monthly[month]
@@ -253,12 +356,6 @@ def write(
     row += 1
 
     # Aggregate WAU across all agents per week
-    wau_by_week: dict[str, int] = defaultdict(int)
-    for r in wau:
-        sd = r.get("start_date", "")
-        if sd:
-            wau_by_week[sd] += r.get("active_user_count") or 0
-
     for week in sorted(wau_by_week):
         fill = _band(ws, row)
         _set(ws, row, 1, week,              fill=fill)
