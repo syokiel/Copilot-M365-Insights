@@ -47,6 +47,15 @@ Governance and telemetry reporting for Microsoft Copilot Studio agents across an
 | `PPADMIN_LICENSES_CS_CONSUMPTION_AGENT` | Power Platform Admin > Licensing > Copilot Studio > Export > Entitlement Consumption (Per Agent) | Per-agent credit consumption by feature and channel |
 | `PPADMIN_LICENSES_CS_CONSUMPTION_USER` | Power Platform Admin > Licensing > Copilot Studio > Export > Entitlement Consumption (Per User) | Per-user credit consumption |
 | `PPADMIN_LICENSES_CS_CONSUMPTION_MANAGEAGENTS` | Power Platform Admin > Licensing > Copilot Studio > Manage Agents > Export | Daily capacity consumption by resource, feature, and channel |
+| `M365USAGE_ACTIVATIONS_USERS` | M365 Admin > Reports > Usage > Microsoft 365 Apps usage > Activations > Export | Per-user M365 Apps activation status by device type |
+| `M365USAGE_ACTIVE_USERS_SERVICES` | M365 Admin > Reports > Usage > Microsoft 365 Apps usage > Active Users > Services Export | Tenant-wide active vs. inactive user counts per service |
+| `M365USAGE_ACTIVE_USERS_ACTIVITY` | M365 Admin > Reports > Usage > Microsoft 365 Apps activity > Active Users > Activity Export | Daily/period activity counts per service |
+| `M365USAGE_ACTIVE_USERS_COUNTS` | M365 Admin > Reports > Usage > Active users - Office 365 > Active Users > Users Export | Tenant-wide active vs. inactive user counts per service |
+| `M365USAGE_ACTIVE_USERS_DETAIL` | M365 Admin > Reports > Usage > Microsoft 365 Apps usage > Active Users > Export | Per-user license/activity detail per service |
+| `M365USAGE_PROPLUS_PLATFORMS` | M365 Admin > Reports > Usage > Microsoft 365 Apps usage > Usage > Platforms Export | User counts by platform (Windows/Mac/mobile/web) |
+| `M365USAGE_PROPLUS_COUNTS` | M365 Admin > Reports > Usage > Microsoft 365 Apps usage > Usage > Users Export | User counts per M365 App (Outlook, Word, Excel, PowerPoint, OneNote, Teams) |
+| `M365USAGE_PROPLUS_DETAIL` | M365 Admin > Reports > Usage > Microsoft 365 Apps usage > Usage > Export | Per-user app/platform usage flags and last-activity dates |
+| `BILLING_LICENCES` | M365 Admin Center > Billing > Licenses (Your products) > Export | Tenant license inventory: total/assigned/expired counts per SKU |
 | `AGENT_JOURNEY_MAP` | Maintained manually — see [Experience Model](#experience-model-xla) below | Agent → Journey → Persona dimension for XLA scoring |
 
 ---
@@ -76,6 +85,15 @@ Governance and telemetry reporting for Microsoft Copilot Studio agents across an
 | **M365_Usage_Agents** | 30-day per-agent usage snapshot |
 | **M365_Usage_AgentUsers** | 30-day per-user per-agent activity |
 | **M365_Usage_Users** | 30-day per-user agent activity rollup |
+| **M365_Activations** | Per-user M365 Apps activation status by device type |
+| **M365_Services_Counts** | Active/inactive user counts per service (Exchange, Teams, OneDrive, SharePoint, Yammer) |
+| **M365_Activity_Counts** | Daily activity counts per service |
+| **M365_Active_Counts** | Tenant-wide active user count trend |
+| **M365_Active_Users** | Per-user license/activity detail per service |
+| **M365_ProPlus_Platforms** | User counts by platform (Windows/Mac/mobile/web) |
+| **M365_ProPlus_Counts** | User counts per M365 App |
+| **M365_ProPlus_Users** | Per-user app/platform usage detail |
+| **Billing_Licences** | Tenant license inventory: total/assigned/expired counts per SKU |
 | **Teams_Usage** | Teams chat, meeting, and call activity |
 | **Viva_Person_Insights** | Person-level Viva productivity signals |
 | **Viva_CS_Sessions** | Daily session outcomes and CSAT per agent |
@@ -193,6 +211,18 @@ PPADMIN_LICENSES_CS_CONSUMPTION_ENV=imports/June2026/EntitlementConsumptionTenan
 PPADMIN_LICENSES_CS_CONSUMPTION_AGENT=imports/June2026/EntitlementConsumptionTenantPerAgentDetailsReport_MCSMessages_180.csv
 PPADMIN_LICENSES_CS_CONSUMPTION_USER=imports/June2026/EntitlementConsumptionTenantPerUserDetailsReport_MCSMessages_180.csv
 PPADMIN_LICENSES_CS_CONSUMPTION_MANAGEAGENTS=imports/June2026/CapacityConsumptionTenantDetailsReport.csv
+
+# M365 Usage Details (M365 Admin Center > Reports > Usage) & Billing
+M365USAGE_ACTIVATIONS_USERS=imports/June2026/Usage_Reports/Office365ActivationsUserDetail.csv
+M365USAGE_ACTIVE_USERS_SERVICES=imports/June2026/Usage_Reports/Office365ServicesUserCounts.csv
+M365USAGE_ACTIVE_USERS_ACTIVITY=imports/June2026/Usage_Reports/Office365ActiveUserActivityCounts.csv
+M365USAGE_ACTIVE_USERS_COUNTS=imports/June2026/Usage_Reports/Office365ActiveUserCounts.csv
+M365USAGE_ACTIVE_USERS_DETAIL=imports/June2026/Usage_Reports/Office365ActiveUserDetail.csv
+M365USAGE_PROPLUS_PLATFORMS=imports/June2026/Usage_Reports/ProPlusUsagePlatformsUserCountsV2.csv
+M365USAGE_PROPLUS_COUNTS=imports/June2026/Usage_Reports/ProPlusUsageUserCountsV2.csv
+M365USAGE_PROPLUS_DETAIL=imports/June2026/Usage_Reports/ProPlusUsageUserDetailV2.csv
+# License inventory (M365 Admin Center → Billing → Licenses → Export)
+BILLING_LICENCES=imports/June2026/Usage_Reports/ProductList.csv
 
 # Experience model — Agent → Journey → Persona mapping for XLA scoring
 AGENT_JOURNEY_MAP=imports/agent_journey_persona_map.csv

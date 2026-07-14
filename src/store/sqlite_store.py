@@ -516,16 +516,6 @@ CREATE TABLE IF NOT EXISTS m365_app_users (
     onedrive_active      INTEGER
 );
 
-CREATE TABLE IF NOT EXISTS m365_graph_request_usage (
-    snapshot_date    TEXT NOT NULL,
-    app_id           TEXT NOT NULL,
-    report_period    TEXT,
-    request_count    INTEGER,
-    fail_count       INTEGER,
-    app_display_name TEXT,
-    PRIMARY KEY (snapshot_date, app_id)
-);
-
 CREATE INDEX IF NOT EXISTS idx_viva_reports_cs_sess_agent  ON viva_reports_cs_session_metrics(agent_id);
 CREATE INDEX IF NOT EXISTS idx_viva_reports_cs_topic_agent ON viva_reports_cs_topic_metrics(agent_id);
 CREATE INDEX IF NOT EXISTS idx_viva_reports_cs_wau_agent   ON viva_reports_cs_weekly_active_users(agent_id);
@@ -2445,26 +2435,6 @@ class SqliteStore:
     def fetch_m365_app_users(self) -> list[dict]:
         rows = self._conn.execute(
             "SELECT * FROM m365_app_users ORDER BY user_principal_name"
-        ).fetchall()
-        return [dict(r) for r in rows]
-
-    def upsert_graph_request_usage(self, rows: list[dict]) -> int:
-        written = 0
-        with self._conn:
-            for r in rows:
-                cur = self._conn.execute(
-                    """INSERT OR REPLACE INTO m365_graph_request_usage VALUES
-                    (?,?,?,?,?,?)""",
-                    (r.get("snapshot_date"), r.get("app_id", ""),
-                     r.get("report_period"), r.get("request_count"), r.get("fail_count"),
-                     r.get("app_display_name")),
-                )
-                written += cur.rowcount
-        return written
-
-    def fetch_graph_request_usage(self) -> list[dict]:
-        rows = self._conn.execute(
-            "SELECT * FROM m365_graph_request_usage ORDER BY snapshot_date DESC"
         ).fetchall()
         return [dict(r) for r in rows]
 

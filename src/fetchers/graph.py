@@ -72,7 +72,7 @@ class GraphFetcher:
     def fetch_copilot_usage(self, lookback_days: int = 30) -> list[dict]:
         """Per-user M365 Copilot prompt activity across all surfaces."""
         rows = self._fetch_csv(
-            f"/reports/getMicrosoft365CopilotUsageUserDetail(period='{_period(lookback_days)}')"
+            f"/copilot/reports/getMicrosoft365CopilotUsageUserDetail(period='{_period(lookback_days)}')"
         )
         return [
             {
@@ -120,11 +120,11 @@ class GraphFetcher:
     def fetch_copilot_user_count_summary(self, lookback_days: int = 30) -> list[dict]:
         """
         Aggregate Copilot enabled/active user counts for the period.
-        GET /reports/getMicrosoft365CopilotUserCountSummary(period='D30')
+        GET /copilot/reports/getMicrosoft365CopilotUserCountSummary(period='D30')
         Returns one row per report-refresh-date.
         """
         rows = self._fetch_csv(
-            f"/reports/getMicrosoft365CopilotUserCountSummary(period='{_period(lookback_days)}')"
+            f"/copilot/reports/getMicrosoft365CopilotUserCountSummary(period='{_period(lookback_days)}')"
         )
         out = []
         for r in rows:
@@ -155,10 +155,10 @@ class GraphFetcher:
     def fetch_copilot_user_count_trend(self, lookback_days: int = 30) -> list[dict]:
         """
         Daily Copilot active user counts across the period.
-        GET /reports/getMicrosoft365CopilotUserCountTrend(period='D30')
+        GET /copilot/reports/getMicrosoft365CopilotUserCountTrend(period='D30')
         """
         rows = self._fetch_csv(
-            f"/reports/getMicrosoft365CopilotUserCountTrend(period='{_period(lookback_days)}')"
+            f"/copilot/reports/getMicrosoft365CopilotUserCountTrend(period='{_period(lookback_days)}')"
         )
         out = []
         for r in rows:
@@ -271,29 +271,6 @@ class GraphFetcher:
                 "teams_active":   _any("Microsoft Teams (Windows)", "Microsoft Teams (Mac)", "Microsoft Teams (Mobile)", "Microsoft Teams (Web)"),
                 "sharepoint_active": _any("SharePoint (Windows)", "SharePoint (Mac)", "SharePoint (Mobile)", "SharePoint (Web)"),
                 "onedrive_active":   _any("OneDrive (Windows)", "OneDrive (Mac)", "OneDrive (Mobile)", "OneDrive (Web)"),
-            })
-        return out
-
-    # ── Graph API request usage ───────────────────────────────────────────────
-
-    def fetch_graph_request_usage(self, lookback_days: int = 30) -> list[dict]:
-        """
-        Aggregate Microsoft Graph API request usage for this tenant/app.
-        GET /reports/getMicrosoftGraphRequestUsage(period='D30')
-        Returns one row per snapshot date.
-        """
-        rows = self._fetch_csv(
-            f"/reports/getMicrosoftGraphRequestUsage(period='{_period(lookback_days)}')"
-        )
-        out = []
-        for r in rows:
-            out.append({
-                "snapshot_date":    r.get("Snapshot Date", "") or r.get("Report Refresh Date", ""),
-                "report_period":    r.get("Report Period", ""),
-                "request_count":    _int(r.get("Total Requests") or r.get("Request Count")),
-                "fail_count":       _int(r.get("Failed Requests") or r.get("Fail Count")),
-                "app_display_name": r.get("Application Display Name", "") or r.get("App Display Name", ""),
-                "app_id":           r.get("Application Id", "") or r.get("App Id", ""),
             })
         return out
 

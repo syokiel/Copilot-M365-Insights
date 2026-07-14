@@ -276,9 +276,6 @@ def cmd_sync() -> str:
                 ("M365 app user detail",
                  lambda: fetcher.fetch_m365_app_user_detail(settings.lookback_days),
                  store.upsert_m365_app_users),
-                ("Graph request usage",
-                 lambda: fetcher.fetch_graph_request_usage(settings.lookback_days),
-                 store.upsert_graph_request_usage),
             ]:
                 try:
                     items   = fetch_fn()
@@ -671,6 +668,7 @@ def cmd_export(run_id: str) -> None:
         m365_usage_proplus_counts=m365_usage_proplus_counts,
         m365_usage_proplus_detail=m365_usage_proplus_detail,
         billing_licences=billing_licences,
+        exclude_sheets=settings.exclude_sheets,
     )
 
 

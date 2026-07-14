@@ -102,12 +102,16 @@ def build_workbook(
     m365_usage_proplus_counts: list[dict] | None = None,
     m365_usage_proplus_detail: list[dict] | None = None,
     billing_licences: list[dict] | None = None,
+    exclude_sheets: set[str] | None = None,
 ) -> None:
     wb = openpyxl.Workbook()
     wb.remove(wb.active)
+    exclude_sheets = exclude_sheets or set()
 
     def _if(name: str, write_fn, *args):
         """Create the sheet only when at least one data arg is non-empty."""
+        if name in exclude_sheets:
+            return
         has_data = any(
             (isinstance(a, (list, tuple)) and len(a) > 0) or
             (isinstance(a, dict) and len(a) > 0)

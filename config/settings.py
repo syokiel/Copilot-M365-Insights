@@ -1,3 +1,4 @@
+import glob
 import os
 import tempfile
 from dataclasses import dataclass
@@ -27,6 +28,24 @@ def _setup_ssl() -> None:
         pass
 
 _setup_ssl()
+
+
+def _resolve_glob(pattern: str) -> str:
+    """
+    Resolve a CSV import path that may contain wildcards (e.g.
+    "Office365ActiveUserCounts*.csv") to the most recently modified matching
+    file — lets export paths survive the date/time suffixes the M365 Admin
+    Center appends to every download without editing the .env on each export.
+    Passes non-wildcard paths through unchanged. Falls back to the pattern
+    unchanged when nothing matches (importers already skip cleanly when a
+    path doesn't exist).
+    """
+    if not pattern or not any(ch in pattern for ch in "*?["):
+        return pattern
+    matches = glob.glob(pattern)
+    if not matches:
+        return pattern
+    return max(matches, key=lambda p: Path(p).stat().st_mtime)
 
 
 @dataclass
@@ -91,6 +110,9 @@ class Settings:
     m365_usage_proplus_detail: str = ""
     # License inventory (M365 Admin Center → Billing → Licenses → Export)
     billing_licences: str = ""
+    # Comma-separated list of Excel sheet names to omit from the export
+    # (must match the sheet name exactly, e.g. "M365_Copilot_Usage,Teams_Usage").
+    exclude_sheets: set = None  # populated in __post_init__
     # MCP server (HTTP deployment)
     mcp_tenant_id: str = ""
     mcp_app_id_uri: str = ""
@@ -172,6 +194,23 @@ class Settings:
         self.m365_usage_proplus_counts       = os.getenv("M365USAGE_PROPLUS_COUNTS",       self.m365_usage_proplus_counts).strip()
         self.m365_usage_proplus_detail       = os.getenv("M365USAGE_PROPLUS_DETAIL",       self.m365_usage_proplus_detail).strip()
         self.billing_licences                = os.getenv("BILLING_LICENCES",               self.billing_licences).strip()
+
+        for _field in (
+            "viva_report_adoption", "viva_report_impact",
+            "m365_admin_agent_inventory",
+            "m365_usage_report_agents", "m365_usage_report_agent_users", "m365_usage_report_users",
+            "ppadmin_licenses_cs_consumption_manageagents", "ppadmin_licenses_cs_consumption_env",
+            "ppadmin_licenses_cs_consumption_agent", "ppadmin_licenses_cs_consumption_user",
+            "m365_usage_activations_users", "m365_usage_active_users_services",
+            "m365_usage_active_users_activity", "m365_usage_active_users_counts",
+            "m365_usage_active_users_detail", "m365_usage_proplus_platforms",
+            "m365_usage_proplus_counts", "m365_usage_proplus_detail",
+            "billing_licences",
+        ):
+            setattr(self, _field, _resolve_glob(getattr(self, _field)))
+
+        raw_exclude_sheets = os.getenv("EXCLUDE_SHEETS", "")
+        self.exclude_sheets = {s.strip() for s in raw_exclude_sheets.split(",") if s.strip()}
         self.mcp_tenant_id = os.getenv("MCP_TENANT_ID", self.mcp_tenant_id)
         self.mcp_app_id_uri = os.getenv("MCP_APP_ID_URI", self.mcp_app_id_uri)
         self.mcp_api_key = os.getenv("MCP_API_KEY", self.mcp_api_key)

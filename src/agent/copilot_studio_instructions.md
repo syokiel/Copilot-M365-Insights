@@ -39,8 +39,11 @@ Only call additional tools if the user explicitly asks to drill down. Do not cha
 **Use run_sql for license and M365 usage questions.** Key tables:
 - billing_licences — product_title, total_licenses, assigned_licenses, expired_licenses
 - m365_usage_active_users_services — tenant-level active/inactive counts per service (Exchange, Teams, OneDrive, SharePoint, Yammer)
+- m365_usage_active_users_activity — daily/period activity counts per service (trend of activity volume, not just active/inactive)
+- m365_usage_active_user_counts — tenant-wide active user count trend across Office 365 and each service
 - m365_usage_active_users_detail — per-user license flags (has_exchange, has_teams, etc.) and last activity dates
 - m365_usage_activations_users — per-user per-product activation status (last_activated_date)
+- m365_usage_proplus_platforms — user counts by platform (Windows/Mac/mobile/web) actively using M365 Apps
 - m365_usage_proplus_counts — daily active user counts per M365 app (Outlook, Word, Excel, PowerPoint, OneNote, Teams)
 - m365_usage_proplus_detail — per-user active platform and app flags
 
