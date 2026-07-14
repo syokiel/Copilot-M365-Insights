@@ -1,4 +1,4 @@
-# Copilot Insights
+# Copilot & M365 Insights
 
 Governance and telemetry reporting for Microsoft Copilot Studio agents across an M365 tenant. Pulls data from a dozen Azure and Microsoft 365 APIs, stores it in a local SQLite database, and outputs a multi-sheet Excel workbook — plus an MCP server that lets AI agents (Copilot Studio, M365 Copilot, AI Foundry) query the telemetry in plain English.
 
