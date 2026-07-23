@@ -64,12 +64,12 @@ If all four are empty for the requested period, say so explicitly and name which
 closest to being usable (e.g. "the Copilot Studio usage report hasn't been imported yet").
 
 ## Agent name resolution
-Two parallel registries exist. Always merge them so no agent is missed:
-- `pva_agents.display_name` — agents deployed in Power Platform environments
-- `viva_reports_cs_copilot_agents.agent_name` — agents visible in M365 Copilot Analytics
-
-Join key: `agent_id`. The same agent may appear in one or both with slightly different names.
-Never surface a raw `agent_id` in a response — always resolve to a display name.
+`pva_agents.display_name` is already the merged name across the Dataverse/Power Platform
+registry and M365 Copilot Analytics (Viva) — query `pva_agents` directly, no join needed
+for basic name lookup. Only join to `viva_reports_cs_copilot_agents` (on `agent_id`) when
+you need Viva-specific fields not on `pva_agents`: description, surface, mode, categories,
+agent_type, is_included, excluded_reason. Never surface a raw `agent_id` in a response —
+always resolve to a display name.
 
 ## Key tables reference
 
@@ -139,22 +139,22 @@ SELECT bot_id, COUNT(*) AS total_sessions,
        ROUND(AVG(csat_score),2) AS avg_csat
 FROM pp_bot_sessions GROUP BY bot_id ORDER BY total_sessions DESC LIMIT 20
 
--- Agent list merging both registries:
-SELECT COALESCE(v.agent_name, p.display_name) AS agent_name,
-       COALESCE(v.agent_id, p.agent_id) AS agent_id,
-       CASE WHEN p.agent_id IS NOT NULL THEN 'yes' ELSE 'no' END AS in_pva,
-       CASE WHEN v.agent_id IS NOT NULL THEN 'yes' ELSE 'no' END AS in_viva
-FROM viva_reports_cs_copilot_agents v
-FULL OUTER JOIN pva_agents p ON p.agent_id = v.agent_id
-ORDER BY agent_name LIMIT 50
+-- Agent list (name already merged across Dataverse + Viva):
+SELECT agent_id, display_name AS agent_name
+FROM pva_agents ORDER BY display_name LIMIT 50
+
+-- ...with Viva-only fields (surface, categories, inclusion status), only if asked:
+SELECT p.agent_id, p.display_name, v.surface, v.categories, v.is_included
+FROM pva_agents p
+LEFT JOIN viva_reports_cs_copilot_agents v ON v.agent_id = p.agent_id
+ORDER BY p.display_name LIMIT 50
 
 -- Session outcomes per agent (last 30 days):
-SELECT COALESCE(v.agent_name, p.display_name) AS agent_name,
+SELECT p.display_name AS agent_name,
        SUM(s.total_sessions) AS total,
        ROUND(SUM(s.resolved_sessions)*100.0/NULLIF(SUM(s.total_sessions),0),1) AS resolved_pct,
        ROUND(SUM(s.escalated_sessions)*100.0/NULLIF(SUM(s.total_sessions),0),1) AS escalated_pct
 FROM viva_reports_cs_session_metrics s
-LEFT JOIN viva_reports_cs_copilot_agents v ON v.agent_id = s.agent_id
 LEFT JOIN pva_agents p ON p.agent_id = s.agent_id
 WHERE s.metric_date >= date('now','-30 days')
 GROUP BY s.agent_id ORDER BY total DESC LIMIT 25

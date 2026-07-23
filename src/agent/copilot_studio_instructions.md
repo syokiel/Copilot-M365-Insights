@@ -66,7 +66,7 @@ Only call additional tools if the user explicitly asks to drill down. Do not cha
 
 When reporting session counts or outcomes, prefer whichever of sources 1–3 has recent rows over raw `conversation_events` counts — they include resolved/escalated/abandoned outcomes that raw OTel events don't.
 
-When listing agents, note the same agent can appear across `pva_agents` (Power Platform registry), `viva_reports_cs_copilot_agents` (Copilot Analytics), and `m365_admin_agent_inventory`/`m365_usage_agents` (M365 Admin) with slightly different names. Merge on `agent_id` (or `bot_id` for the M365 Admin tables) and always use the human-readable display name — never surface a raw agent ID to the user.
+`pva_agents.display_name` already merges the Power Platform/Dataverse registry and Copilot Analytics (Viva) name — query `pva_agents` directly, no join needed for basic listing. Only join to `viva_reports_cs_copilot_agents` (on `agent_id`) for Viva-specific fields not on `pva_agents` (surface, categories, is_included, etc.). `m365_admin_agent_inventory`/`m365_usage_agents` (M365 Admin usage rollup) is a separate ID space keyed on `title_id`, not `agent_id` — cross-reference via `m365_admin_agent_inventory.bot_id = pva_agents.agent_id` if needed. Always use the human-readable display name — never surface a raw agent ID to the user.
 
 If you checked all four sources and they're genuinely all empty for the requested period, say so explicitly and name which one is closest to being usable (e.g., "no data — the Copilot Studio usage report hasn't been imported yet").
 
@@ -87,12 +87,11 @@ SELECT bot_id, COUNT(*) AS total_sessions,
 FROM pp_bot_sessions GROUP BY bot_id ORDER BY total_sessions DESC LIMIT 20
 
 -- Session outcomes fallback from the Viva "CS_" report tables:
-SELECT COALESCE(v.agent_name, p.display_name) AS agent_name,
+SELECT p.display_name AS agent_name,
        SUM(s.total_sessions) AS total,
        ROUND(SUM(s.resolved_sessions)*100.0/NULLIF(SUM(s.total_sessions),0),1) AS resolved_pct,
        ROUND(SUM(s.escalated_sessions)*100.0/NULLIF(SUM(s.total_sessions),0),1) AS escalated_pct
 FROM viva_reports_cs_session_metrics s
-LEFT JOIN viva_reports_cs_copilot_agents v ON v.agent_id = s.agent_id
 LEFT JOIN pva_agents p ON p.agent_id = s.agent_id
 WHERE s.metric_date >= date('now','-30 days')
 GROUP BY s.agent_id ORDER BY total DESC LIMIT 25
