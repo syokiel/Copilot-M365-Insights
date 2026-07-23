@@ -323,7 +323,7 @@ class VivaReportImporter:
             out.append({
                 'person_id':                   r.get('PersonId', ''),
                 'metric_date':                 _norm_date(r.get('MetricDate', '')),
-                'organization':                r.get('Organization', ''),
+                'organization':                r.get('Organization') or None,
                 'chat_work_outlook':           _int(r.get('Copilot Chat (work) prompts submitted in Outlook')),
                 'chat_work_teams':             _int(r.get('Copilot Chat (work) prompts submitted in Teams')),
                 'chat_web_teams':              _int(r.get('Copilot Chat (Web) prompts submitted in Teams')),
@@ -378,7 +378,7 @@ class VivaReportImporter:
             out.append({
                 'person_id':                      r.get('PersonId', ''),
                 'metric_date':                    _norm_date(r.get('MetricDate', '')),
-                'organization':                   r.get('Organization', ''),
+                'organization':                   r.get('Organization') or None,
                 'is_active':                      1 if str(r.get('IsActive', '')).upper() == 'TRUE' else 0,
                 'weekend_days':                   r.get('WeekendDays', ''),
                 'total_copilot_actions':          _int(r.get('Total Copilot actions taken')),

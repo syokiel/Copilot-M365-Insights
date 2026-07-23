@@ -60,61 +60,21 @@ server = Server("agent-telemetry")
 # Database helper
 # ---------------------------------------------------------------------------
 
-_DDL = """
-CREATE TABLE IF NOT EXISTS conversation_events (
-    row_id TEXT PRIMARY KEY, run_id TEXT, timestamp TEXT, event_name TEXT,
-    session_id TEXT, user_id TEXT, conversation_id TEXT, channel_id TEXT,
-    design_mode INTEGER, topic_name TEXT, text TEXT, properties TEXT
-);
-CREATE TABLE IF NOT EXISTS connector_calls (
-    row_id TEXT PRIMARY KEY, run_id TEXT, timestamp TEXT, connector_name TEXT,
-    action_target TEXT, session_id TEXT, user_id TEXT, conversation_id TEXT,
-    channel_id TEXT, design_mode INTEGER, success INTEGER, result_code TEXT,
-    duration_ms REAL, properties TEXT
-);
-CREATE TABLE IF NOT EXISTS sync_runs (
-    run_id TEXT PRIMARY KEY, started_at TEXT, events_new INTEGER, calls_new INTEGER
-);
-CREATE TABLE IF NOT EXISTS pva_agents (
-    agent_id TEXT PRIMARY KEY, display_name TEXT, schema_name TEXT, environment_id TEXT,
-    created_at TEXT, modified_at TEXT, published_at TEXT, properties TEXT
-);
-CREATE TABLE IF NOT EXISTS pva_environments (
-    environment_id TEXT PRIMARY KEY, display_name TEXT, type TEXT, region TEXT,
-    state TEXT, created_at TEXT, modified_at TEXT, sku TEXT, dataverse_url TEXT
-);
-CREATE TABLE IF NOT EXISTS pva_publishers (
-    publisher_id TEXT PRIMARY KEY, display_name TEXT, unique_name TEXT,
-    email TEXT, phone TEXT, custom_prefix TEXT, solution_count INTEGER
-);
-CREATE TABLE IF NOT EXISTS pva_dlp_policies (
-    policy_id TEXT PRIMARY KEY, display_name TEXT, environment_type TEXT,
-    created_by TEXT, created_at TEXT, modified_at TEXT, enforcement_mode TEXT,
-    blocked_connectors TEXT, business_connectors TEXT, non_business_connectors TEXT
-);
-CREATE TABLE IF NOT EXISTS pva_agent_solutions (
-    agent_id TEXT PRIMARY KEY, solution_id TEXT, solution_name TEXT,
-    solution_unique TEXT, version TEXT, is_managed INTEGER DEFAULT 0
-);
-CREATE TABLE IF NOT EXISTS az_dependency_failures (
-    row_id TEXT PRIMARY KEY, operation_id TEXT, agent_id TEXT, agent_name TEXT,
-    env_id TEXT, conversation_id TEXT, dependency_name TEXT, result_code TEXT,
-    success INTEGER, duration_ms REAL, timestamp TEXT
-);
-CREATE TABLE IF NOT EXISTS az_exceptions (
-    row_id TEXT PRIMARY KEY, operation_id TEXT, agent_id TEXT, conversation_id TEXT,
-    exception_type TEXT, exception_message TEXT, timestamp TEXT
-);
-CREATE TABLE IF NOT EXISTS az_alerts (
-    alert_id TEXT PRIMARY KEY, agent_id TEXT, alert_name TEXT,
-    severity TEXT, fired_time TEXT, resource_id TEXT
-);
-"""
+# Reuse the real store's schema (DDL + view-based migrations) instead of a
+# hand-maintained subset — a hand-copied copy previously drifted out of sync
+# with sqlite_store.py (missing columns on pva_agents) and would silently
+# create a stale, non-view pva_agents table on a fresh DB that no SqliteStore
+# had ever migrated yet.
+from src.store.sqlite_store import SqliteStore
+
 
 def _db() -> sqlite3.Connection:
-    conn = sqlite3.connect(settings.db_path)
+    # Constructing SqliteStore runs the full DDL + _migrate() (idempotent),
+    # guaranteeing compatibility views (pva_agents, etc.) exist even if this
+    # is the very first process to touch settings.db_path.
+    store = SqliteStore(settings.db_path)
+    conn = store._conn
     conn.row_factory = sqlite3.Row
-    conn.executescript(_DDL)
     return conn
 
 

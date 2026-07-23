@@ -54,20 +54,8 @@ CREATE TABLE IF NOT EXISTS connector_calls (
     properties             TEXT
 );
 
-CREATE TABLE IF NOT EXISTS pva_agents (
-    agent_id        TEXT PRIMARY KEY,
-    display_name    TEXT,
-    schema_name     TEXT,
-    environment_id  TEXT,
-    created_at      TEXT,
-    modified_at     TEXT,
-    published_at    TEXT,
-    created_by      TEXT,
-    owner_id        TEXT,
-    created_in      TEXT,
-    ai_model        TEXT,
-    properties      TEXT
-);
+-- pva_agents is now a compatibility VIEW over dim_agent (see Cluster A DDL
+-- further down + _migrate()), not a physical table.
 
 CREATE TABLE IF NOT EXISTS pva_environments (
     environment_id  TEXT PRIMARY KEY,
@@ -173,7 +161,7 @@ CREATE TABLE IF NOT EXISTS az_alerts (
 
 CREATE TABLE IF NOT EXISTS m365_copilot_usage (
     user_principal_name TEXT PRIMARY KEY,
-    display_name        TEXT,
+    -- display_name moved to dim_user; fetch_copilot_usage() joins it back in
     last_activity_date  TEXT,
     teams_chats         INTEGER,
     teams_meetings      INTEGER,
@@ -408,18 +396,11 @@ CREATE TABLE IF NOT EXISTS viva_reports_cs_action_metrics (
     PRIMARY KEY (agent_id, action_schema_name, metric_date)
 );
 
-CREATE TABLE IF NOT EXISTS viva_reports_cs_copilot_agents (
-    agent_id        TEXT PRIMARY KEY,
-    agent_name      TEXT,
-    description     TEXT,
-    surface         TEXT,
-    mode            TEXT,
-    categories      TEXT,
-    agent_type      TEXT,
-    is_included     INTEGER DEFAULT 1,
-    excluded_reason TEXT,
-    icon            TEXT
-);
+-- viva_reports_cs_copilot_agents' data now lives in dim_agent (see Cluster A
+-- DDL further down). fetch_viva_reports_cs_copilot_agents() reads from
+-- dim_agent directly; a compatibility VIEW named viva_reports_cs_copilot_agents
+-- is also created in _migrate() so example SQL in the LLM prompt docs
+-- (src/agent/instructions.py) keeps working unchanged.
 
 CREATE TABLE IF NOT EXISTS viva_reports_cs_weekly_active_users (
     agent_id          TEXT NOT NULL,
@@ -484,7 +465,7 @@ CREATE TABLE IF NOT EXISTS m365_copilot_packages (
 
 CREATE TABLE IF NOT EXISTS m365_o365_active_users (
     user_principal_name      TEXT PRIMARY KEY,
-    display_name             TEXT,
+    -- display_name moved to dim_user; fetch_o365_active_users() joins it back in
     is_deleted               INTEGER DEFAULT 0,
     exchange_last_activity   TEXT,
     onedrive_last_activity   TEXT,
@@ -506,12 +487,10 @@ CREATE TABLE IF NOT EXISTS m365_app_users (
     last_activity_date   TEXT,
     report_refresh_date  TEXT,
     report_period        TEXT,
-    outlook_active       INTEGER,
-    word_active          INTEGER,
-    excel_active         INTEGER,
-    ppt_active           INTEGER,
-    onenote_active       INTEGER,
-    teams_active         INTEGER,
+    -- outlook/word/excel/ppt/onenote/teams _active flags moved to
+    -- fact_user_app_activity (overlap with m365_usage_proplus_detail);
+    -- fetch_m365_app_users() joins them back in. sharepoint/onedrive stay
+    -- here (no overlapping source for those two apps).
     sharepoint_active    INTEGER,
     onedrive_active      INTEGER
 );
@@ -631,10 +610,9 @@ CREATE TABLE IF NOT EXISTS viva_reports_copilot_impact (
     PRIMARY KEY (person_id, metric_date)
 );
 
-CREATE INDEX IF NOT EXISTS idx_viva_adopt_person ON viva_reports_copilot_adoption(person_id);
-CREATE INDEX IF NOT EXISTS idx_viva_adopt_date   ON viva_reports_copilot_adoption(metric_date);
-CREATE INDEX IF NOT EXISTS idx_viva_impact_person ON viva_reports_copilot_impact(person_id);
-CREATE INDEX IF NOT EXISTS idx_viva_impact_date   ON viva_reports_copilot_impact(metric_date);
+-- viva_reports_copilot_adoption / _impact are now compatibility views over
+-- fact_copilot_actions_per_person / fact_copilot_work_patterns (views can't
+-- be indexed) — indexed further down where those tables are declared.
 
 -- ── Power Platform Analytics API ──────────────────────────────────────────
 
@@ -757,7 +735,7 @@ CREATE INDEX IF NOT EXISTS idx_dim_ajp_persona ON dim_agent_journey_persona(pers
 
 CREATE TABLE IF NOT EXISTS m365_usage_users (
     username                 TEXT PRIMARY KEY,
-    display_name             TEXT,
+    -- display_name moved to dim_user (keyed by username); fetch_m365_usage_users() joins it back in
     agents_used              INTEGER,
     agent_responses_received INTEGER,
     last_activity_date       TEXT
@@ -849,57 +827,14 @@ CREATE TABLE IF NOT EXISTS m365_usage_activations_users (
     PRIMARY KEY (user_principal_name, product_type)
 );
 
-CREATE TABLE IF NOT EXISTS m365_usage_active_users_services (
-    report_refresh_date TEXT NOT NULL,
-    report_period       TEXT NOT NULL,
-    exchange_active     INTEGER,
-    exchange_inactive   INTEGER,
-    onedrive_active     INTEGER,
-    onedrive_inactive   INTEGER,
-    sharepoint_active   INTEGER,
-    sharepoint_inactive INTEGER,
-    skype_active        INTEGER,
-    skype_inactive      INTEGER,
-    yammer_active       INTEGER,
-    yammer_inactive     INTEGER,
-    teams_active        INTEGER,
-    teams_inactive      INTEGER,
-    office365_active    INTEGER,
-    office365_inactive  INTEGER,
-    PRIMARY KEY (report_refresh_date, report_period)
-);
-
-CREATE TABLE IF NOT EXISTS m365_usage_active_users_activity (
-    report_date         TEXT NOT NULL,
-    report_period       TEXT NOT NULL,
-    report_refresh_date TEXT,
-    exchange            INTEGER,
-    onedrive            INTEGER,
-    sharepoint          INTEGER,
-    skype               INTEGER,
-    yammer              INTEGER,
-    teams               INTEGER,
-    PRIMARY KEY (report_date, report_period)
-);
-
-CREATE TABLE IF NOT EXISTS m365_usage_active_user_counts (
-    report_date         TEXT NOT NULL,
-    report_period       TEXT NOT NULL,
-    report_refresh_date TEXT,
-    office365           INTEGER,
-    exchange            INTEGER,
-    onedrive            INTEGER,
-    sharepoint          INTEGER,
-    skype               INTEGER,
-    yammer              INTEGER,
-    teams               INTEGER,
-    PRIMARY KEY (report_date, report_period)
-);
+-- m365_usage_active_users_services / _activity, and m365_usage_active_user_counts
+-- are now compatibility VIEWs pivoting fact_service_usage back to their
+-- original wide shape (see Cluster C DDL further down + _migrate()).
 
 CREATE TABLE IF NOT EXISTS m365_usage_active_users_detail (
     user_principal_name      TEXT PRIMARY KEY,
     report_refresh_date      TEXT,
-    display_name             TEXT,
+    -- display_name moved to dim_user; fetch_m365_usage_active_users_detail() joins it back in
     is_deleted               INTEGER DEFAULT 0,
     deleted_date             TEXT,
     has_exchange             INTEGER DEFAULT 0,
@@ -956,13 +891,10 @@ CREATE TABLE IF NOT EXISTS m365_usage_proplus_detail (
     windows              INTEGER DEFAULT 0,
     mac                  INTEGER DEFAULT 0,
     mobile               INTEGER DEFAULT 0,
-    web                  INTEGER DEFAULT 0,
-    outlook              INTEGER DEFAULT 0,
-    word                 INTEGER DEFAULT 0,
-    excel                INTEGER DEFAULT 0,
-    powerpoint           INTEGER DEFAULT 0,
-    onenote              INTEGER DEFAULT 0,
-    teams                INTEGER DEFAULT 0
+    web                  INTEGER DEFAULT 0
+    -- outlook/word/excel/powerpoint/onenote/teams flags moved to
+    -- fact_user_app_activity (overlap with m365_app_users);
+    -- fetch_m365_usage_proplus_detail() joins them back in.
 );
 
 CREATE TABLE IF NOT EXISTS billing_licences (
@@ -974,6 +906,182 @@ CREATE TABLE IF NOT EXISTS billing_licences (
 );
 
 CREATE INDEX IF NOT EXISTS idx_m365_activations_upn ON m365_usage_activations_users(user_principal_name);
+
+-- ── Schema consolidation bookkeeping ───────────────────────────────────────
+-- Gates the one-time table-consolidation migrations in _migrate(). A
+-- migration is only marked applied after its data copy is row-count
+-- verified — "destination has some rows" is not treated as "done", since a
+-- killed process mid-copy on a large DB must not be mistaken for success.
+
+CREATE TABLE IF NOT EXISTS _schema_migrations (
+    id          TEXT PRIMARY KEY,
+    applied_at  TEXT NOT NULL
+);
+
+-- ── Cluster A: unified agent identity (Dataverse + Viva Copilot agents) ───
+-- pva_agents.agent_id and viva_reports_cs_copilot_agents.agent_id are the
+-- same Copilot Studio / Dataverse agent GUID space, so both sources are
+-- COALESCE-merged into one row here. pva_agents becomes a compatibility
+-- view over this table (see _migrate()); viva_reports_cs_copilot_agents is
+-- retired in favour of fetch_viva_reports_cs_copilot_agents() reading
+-- straight from dim_agent. m365_admin_agent_inventory / m365_usage_agents
+-- are a DIFFERENT ID space (M365 Admin "Title ID") and are NOT part of
+-- this table — they keep referencing dim_agent via their existing
+-- bot_id/title_id crosswalk columns.
+
+CREATE TABLE IF NOT EXISTS dim_agent (
+    agent_id        TEXT PRIMARY KEY,
+    display_name    TEXT,
+    schema_name     TEXT,
+    environment_id  TEXT,
+    created_at      TEXT,
+    modified_at     TEXT,
+    published_at    TEXT,
+    created_by      TEXT,
+    owner_id        TEXT,
+    created_in      TEXT,
+    ai_model        TEXT,
+    properties      TEXT,
+    -- Viva Copilot-agents-report columns (only set when in_viva_report=1)
+    description     TEXT,
+    surface         TEXT,
+    mode            TEXT,
+    categories      TEXT,
+    agent_type      TEXT,
+    is_included     INTEGER DEFAULT 1,
+    excluded_reason TEXT,
+    icon            TEXT,
+    in_viva_report  INTEGER DEFAULT 0
+);
+
+-- ── Cluster B: per-person weekly Copilot actions (Adoption + Impact) ──────
+-- ~30 of the ~44 Adoption/Impact columns are the same metric reported by
+-- both CSV exports; the rest are exclusive to one or the other. Shared and
+-- adoption/impact-exclusive *action* columns live in the first table
+-- (COALESCE-merged); Impact's work-pattern-only columns live in the second.
+-- viva_reports_copilot_adoption / _impact become compatibility views.
+
+CREATE TABLE IF NOT EXISTS fact_copilot_actions_per_person (
+    person_id                          TEXT NOT NULL,
+    metric_date                        TEXT NOT NULL,
+    organization                       TEXT,
+    chat_work_outlook                  INTEGER,
+    chat_work_teams                    INTEGER,
+    chat_web_teams                     INTEGER,
+    chat_web_outlook                   INTEGER,
+    chat_web_prompts                   INTEGER,
+    chat_work_prompts                  INTEGER,
+    word_work_prompts                  INTEGER,
+    word_web_prompts                   INTEGER,
+    excel_work_prompts                 INTEGER,
+    excel_web_prompts                  INTEGER,
+    ppt_work_prompts                   INTEGER,
+    ppt_web_prompts                    INTEGER,
+    word_chat_prompts                  INTEGER,
+    ppt_chat_prompts                   INTEGER,
+    excel_chat_prompts                 INTEGER,
+    intelligent_recap_actions          INTEGER,
+    visualize_table_word               INTEGER,
+    add_content_ppt                    INTEGER,
+    draft_word_doc                     INTEGER,
+    summarize_word_doc                 INTEGER,
+    email_coaching                     INTEGER,
+    generate_email_draft               INTEGER,
+    summarize_email_thread             INTEGER,
+    excel_analysis                     INTEGER,
+    excel_formatting                   INTEGER,
+    create_excel_formula               INTEGER,
+    summarize_meeting_teams            INTEGER,
+    summarize_ppt                      INTEGER,
+    create_ppt                         INTEGER,
+    rewrite_text_word                  INTEGER,
+    summarize_chat_teams               INTEGER,
+    compose_chat_teams                 INTEGER,
+    total_copilot_actions              INTEGER,
+    total_copilot_active_days          INTEGER,
+    total_copilot_enabled_days         INTEGER,
+    meeting_hours_summarized           REAL,
+    actions_copilot_chat               INTEGER,
+    actions_excel                      INTEGER,
+    actions_outlook                    INTEGER,
+    actions_powerpoint                 INTEGER,
+    actions_teams                      INTEGER,
+    actions_word                       INTEGER,
+    chat_conversations_summarized      INTEGER,
+    meetings_summarized                INTEGER,
+    organize_ppt                       INTEGER,
+    in_adoption_report                 INTEGER DEFAULT 0,
+    in_impact_report                   INTEGER DEFAULT 0,
+    PRIMARY KEY (person_id, metric_date)
+);
+
+CREATE TABLE IF NOT EXISTS fact_copilot_work_patterns (
+    person_id                   TEXT NOT NULL,
+    metric_date                 TEXT NOT NULL,
+    is_active                   INTEGER,
+    weekend_days                TEXT,
+    attended_meetings           REAL,
+    meetings                    REAL,
+    meeting_hours               REAL,
+    uninterrupted_hours         REAL,
+    small_meeting_hours         REAL,
+    multitasking_hours          REAL,
+    conflicting_meeting_hours   REAL,
+    chats_sent                  INTEGER,
+    emails_sent                 INTEGER,
+    emails_sent_with_copilot    INTEGER,
+    PRIMARY KEY (person_id, metric_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_copilot_actions_person ON fact_copilot_actions_per_person(person_id);
+CREATE INDEX IF NOT EXISTS idx_copilot_actions_date   ON fact_copilot_actions_per_person(metric_date);
+
+-- ── Cluster C: per-service usage counts (long format) ─────────────────────
+-- m365_usage_active_users_services / _activity / m365_usage_active_user_counts
+-- were three near-identical wide tables (same service list, same shape) fed
+-- by three separate CSV exports. metric_source disambiguates the origin, so
+-- each source only ever writes its own partition (no cross-source COALESCE
+-- needed). Compatibility views pivot this back to each original wide shape.
+
+CREATE TABLE IF NOT EXISTS fact_service_usage (
+    metric_date         TEXT NOT NULL,   -- report_date (activity/counts) or report_refresh_date (services)
+    report_period       TEXT NOT NULL,
+    service_name        TEXT NOT NULL,   -- exchange | onedrive | sharepoint | skype | yammer | teams | office365
+    metric_source       TEXT NOT NULL,   -- 'services' | 'activity' | 'counts'
+    active_count        INTEGER,
+    inactive_count       INTEGER,
+    report_refresh_date  TEXT,
+    PRIMARY KEY (metric_date, report_period, service_name, metric_source)
+);
+
+-- ── Cluster D: user display-name dimension ─────────────────────────────────
+-- display_name was duplicated across m365_copilot_usage, m365_o365_active_users,
+-- m365_usage_active_users_detail, and m365_usage_users (all keyed on the same
+-- UPN space, though m365_usage_users names its key column "username"). Those
+-- four tables' own display_name column is dropped; their fetch_* methods
+-- LEFT JOIN this table back in so their returned dict shape is unchanged.
+
+CREATE TABLE IF NOT EXISTS dim_user (
+    user_principal_name TEXT PRIMARY KEY,
+    display_name         TEXT
+);
+
+-- ── Cluster E: per-app activation flags (long format) ──────────────────────
+-- m365_app_users and m365_usage_proplus_detail both carry boolean "is this
+-- M365 app active" flags for the overlapping app set (outlook/word/excel/
+-- powerpoint/onenote/teams). Each table keeps its own unique columns
+-- (m365_app_users: sharepoint/onedrive flags; proplus_detail: platform
+-- flags) — only the overlapping per-app flags move here.
+
+CREATE TABLE IF NOT EXISTS fact_user_app_activity (
+    user_principal_name  TEXT NOT NULL,
+    app_name             TEXT NOT NULL,
+    source                TEXT NOT NULL,   -- 'm365_app_users' | 'm365_usage_proplus_detail'
+    is_active              INTEGER,
+    report_period           TEXT,
+    report_refresh_date      TEXT,
+    PRIMARY KEY (user_principal_name, app_name, source)
+);
 """
 
 
@@ -1021,6 +1129,76 @@ def _entitlement_per_agent_row_id(r: dict) -> str:
     return hashlib.sha1(key.encode()).hexdigest()
 
 
+# Columns shared by fact_copilot_actions_per_person, written by both the
+# Copilot Adoption and Copilot Impact CSV importers. Defined once so the
+# upsert SQL (ON CONFLICT column list) and the compatibility-view column
+# lists can't drift apart from each other.
+_COPILOT_ACTION_COLUMNS = (
+    "organization",
+    "chat_work_outlook", "chat_work_teams", "chat_web_teams", "chat_web_outlook",
+    "chat_web_prompts", "chat_work_prompts",
+    "word_work_prompts", "word_web_prompts",
+    "excel_work_prompts", "excel_web_prompts",
+    "ppt_work_prompts", "ppt_web_prompts",
+    "word_chat_prompts", "ppt_chat_prompts", "excel_chat_prompts",
+    "intelligent_recap_actions", "visualize_table_word", "add_content_ppt",
+    "draft_word_doc", "summarize_word_doc", "email_coaching",
+    "generate_email_draft", "summarize_email_thread",
+    "excel_analysis", "excel_formatting", "create_excel_formula",
+    "summarize_meeting_teams", "summarize_ppt", "create_ppt", "rewrite_text_word",
+    "summarize_chat_teams", "compose_chat_teams",
+    "total_copilot_actions", "total_copilot_active_days", "total_copilot_enabled_days",
+    "meeting_hours_summarized",
+    "actions_copilot_chat", "actions_excel", "actions_outlook",
+    "actions_powerpoint", "actions_teams", "actions_word",
+    "chat_conversations_summarized", "meetings_summarized", "organize_ppt",
+)
+
+# Columns present on the original viva_reports_copilot_adoption table
+# (a subset of _COPILOT_ACTION_COLUMNS — excludes Impact-only action columns).
+_ADOPTION_ACTION_COLUMNS = tuple(
+    c for c in _COPILOT_ACTION_COLUMNS
+    if c not in ("chat_conversations_summarized", "meetings_summarized", "organize_ppt")
+)
+
+# Columns present on the original viva_reports_copilot_impact table
+# (a subset of _COPILOT_ACTION_COLUMNS — excludes Adoption-only action columns).
+_IMPACT_ACTION_COLUMNS = tuple(
+    c for c in _COPILOT_ACTION_COLUMNS
+    if c not in (
+        "chat_work_outlook", "chat_work_teams", "chat_web_teams", "chat_web_outlook",
+        "word_chat_prompts", "ppt_chat_prompts", "excel_chat_prompts",
+        "actions_copilot_chat", "actions_excel", "actions_outlook",
+        "actions_powerpoint", "actions_teams", "actions_word",
+    )
+)
+
+# fact_copilot_work_patterns columns — exclusive to the Copilot Impact CSV.
+_COPILOT_WORK_PATTERN_COLUMNS = (
+    "is_active", "weekend_days",
+    "attended_meetings", "meetings", "meeting_hours", "uninterrupted_hours",
+    "small_meeting_hours", "multitasking_hours", "conflicting_meeting_hours",
+    "chats_sent", "emails_sent", "emails_sent_with_copilot",
+)
+
+# Service names fanned out into fact_service_usage rows. 'office365' is a
+# tenant-wide rollup present on the 'services' and 'counts' sources but not
+# 'activity'.
+_SERVICE_NAMES = ("exchange", "onedrive", "sharepoint", "skype", "yammer", "teams")
+
+# app_name -> source column name, per table (the two sources name PowerPoint
+# differently: m365_app_users uses "ppt_active", proplus_detail uses
+# "powerpoint" — fact_user_app_activity normalizes both to app_name="powerpoint").
+_APP_USERS_COLUMNS = {
+    "outlook": "outlook_active", "word": "word_active", "excel": "excel_active",
+    "powerpoint": "ppt_active", "onenote": "onenote_active", "teams": "teams_active",
+}
+_PROPLUS_APP_COLUMNS = {
+    "outlook": "outlook", "word": "word", "excel": "excel",
+    "powerpoint": "powerpoint", "onenote": "onenote", "teams": "teams",
+}
+
+
 class SqliteStore:
     def __init__(self, db_path: str) -> None:
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
@@ -1042,32 +1220,35 @@ class SqliteStore:
             self._conn.execute("ALTER TABLE pva_bots RENAME TO pva_agents")
         if "pva_bot_solutions" in tables and "pva_agent_solutions" not in tables:
             self._conn.execute("ALTER TABLE pva_bot_solutions RENAME TO pva_agent_solutions")
-        # Rename legacy bot_id column → agent_id
-        agent_cols = {
-            row[1]
-            for row in self._conn.execute("PRAGMA table_info(pva_agents)").fetchall()
-        }
-        if "bot_id" in agent_cols:
-            self._conn.execute("ALTER TABLE pva_agents RENAME COLUMN bot_id TO agent_id")
+        # Rename legacy bot_id column → agent_id. Guarded on pva_agents still
+        # being a real table — once dim_agent migration has run, pva_agents
+        # is a VIEW and none of this applies (ALTER TABLE on a view errors).
+        if "pva_agents" in tables:
+            agent_cols = {
+                row[1]
+                for row in self._conn.execute("PRAGMA table_info(pva_agents)").fetchall()
+            }
+            if "bot_id" in agent_cols:
+                self._conn.execute("ALTER TABLE pva_agents RENAME COLUMN bot_id TO agent_id")
+            # Add new columns added in the inventory-API integration
+            agent_cols = {
+                row[1]
+                for row in self._conn.execute("PRAGMA table_info(pva_agents)").fetchall()
+            }
+            for col, typedef in [
+                ("created_by", "TEXT"),
+                ("owner_id",   "TEXT"),
+                ("created_in", "TEXT"),
+                ("ai_model",   "TEXT"),
+            ]:
+                if col not in agent_cols:
+                    self._conn.execute(f"ALTER TABLE pva_agents ADD COLUMN {col} {typedef}")
         sol_cols = {
             row[1]
             for row in self._conn.execute("PRAGMA table_info(pva_agent_solutions)").fetchall()
         }
         if "bot_id" in sol_cols:
             self._conn.execute("ALTER TABLE pva_agent_solutions RENAME COLUMN bot_id TO agent_id")
-        # Add new columns added in the inventory-API integration
-        agent_cols = {
-            row[1]
-            for row in self._conn.execute("PRAGMA table_info(pva_agents)").fetchall()
-        }
-        for col, typedef in [
-            ("created_by", "TEXT"),
-            ("owner_id",   "TEXT"),
-            ("created_in", "TEXT"),
-            ("ai_model",   "TEXT"),
-        ]:
-            if col not in agent_cols:
-                self._conn.execute(f"ALTER TABLE pva_agents ADD COLUMN {col} {typedef}")
 
         # Add OTel GenAI attribute columns to conversation_events and connector_calls
         event_cols = {row[1] for row in self._conn.execute("PRAGMA table_info(conversation_events)").fetchall()}
@@ -1129,6 +1310,417 @@ class SqliteStore:
                     continue  # destination already has data — skip
                 self._conn.execute(f"DROP TABLE {new}")
             self._conn.execute(f"ALTER TABLE {old} RENAME TO {new}")
+
+        # Table-consolidation migrations (dim_agent, fact_* tables). Each is
+        # idempotent and gated on _schema_migrations so a killed process
+        # mid-copy retries on next startup instead of being treated as done.
+        self._migrate_dim_agent()
+        self._migrate_copilot_actions()
+        self._migrate_service_usage()
+        self._migrate_dim_user()
+        self._migrate_app_activity()
+
+    # ------------------------------------------------------------------
+    # Migration sentinel helpers
+    # ------------------------------------------------------------------
+
+    def _migration_applied(self, migration_id: str) -> bool:
+        return self._conn.execute(
+            "SELECT 1 FROM _schema_migrations WHERE id = ?", (migration_id,)
+        ).fetchone() is not None
+
+    def _mark_migration_applied(self, migration_id: str) -> None:
+        self._conn.execute(
+            "INSERT OR IGNORE INTO _schema_migrations (id, applied_at) VALUES (?, ?)",
+            (migration_id, datetime.now(timezone.utc).isoformat()),
+        )
+
+    def _upsert_copilot_actions(self, r: dict, source_col: str) -> int:
+        """Shared by upsert_viva_reports_copilot_adoption/_impact: COALESCE-
+        upsert the columns both CSV exports can supply into
+        fact_copilot_actions_per_person, and flag which source wrote it via
+        source_col ('in_adoption_report' or 'in_impact_report')."""
+        cols = _COPILOT_ACTION_COLUMNS
+        col_list = ", ".join(("person_id", "metric_date") + cols + (source_col,))
+        placeholders = ", ".join(["?"] * (2 + len(cols) + 1))
+        set_clause = ",\n                        ".join(
+            f"{c} = COALESCE(excluded.{c}, fact_copilot_actions_per_person.{c})" for c in cols
+        )
+        cur = self._conn.execute(
+            f"""
+            INSERT INTO fact_copilot_actions_per_person ({col_list})
+            VALUES ({placeholders})
+            ON CONFLICT(person_id, metric_date) DO UPDATE SET
+                {set_clause},
+                {source_col} = 1
+            """,
+            (r['person_id'], r['metric_date'], *(r.get(c) for c in cols), 1),
+        )
+        return cur.rowcount
+
+    def _migrate_dim_agent(self) -> None:
+        """Cluster A: fold pva_agents + viva_reports_cs_copilot_agents into
+        dim_agent, then replace both old table names with compatibility
+        views. Safe to call on every startup — no-ops once applied."""
+        if self._migration_applied("dim_agent_v1"):
+            return
+
+        tables = {
+            row[0] for row in self._conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+
+        pva_count = 0
+        if "pva_agents" in tables:
+            rows = self._conn.execute(
+                "SELECT agent_id, display_name, schema_name, environment_id, created_at, "
+                "modified_at, published_at, created_by, owner_id, created_in, ai_model, properties "
+                "FROM pva_agents"
+            ).fetchall()
+            for r in rows:
+                self._conn.execute(
+                    """
+                    INSERT INTO dim_agent
+                    (agent_id, display_name, schema_name, environment_id, created_at,
+                     modified_at, published_at, created_by, owner_id, created_in, ai_model, properties)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                    ON CONFLICT(agent_id) DO UPDATE SET
+                        display_name   = COALESCE(excluded.display_name,   dim_agent.display_name),
+                        schema_name    = COALESCE(excluded.schema_name,    dim_agent.schema_name),
+                        environment_id = COALESCE(excluded.environment_id, dim_agent.environment_id),
+                        created_at     = COALESCE(excluded.created_at,     dim_agent.created_at),
+                        modified_at    = COALESCE(excluded.modified_at,    dim_agent.modified_at),
+                        published_at   = COALESCE(excluded.published_at,   dim_agent.published_at),
+                        created_by     = COALESCE(excluded.created_by,     dim_agent.created_by),
+                        owner_id       = COALESCE(excluded.owner_id,       dim_agent.owner_id),
+                        created_in     = COALESCE(excluded.created_in,     dim_agent.created_in),
+                        ai_model       = COALESCE(excluded.ai_model,       dim_agent.ai_model),
+                        properties     = COALESCE(excluded.properties,     dim_agent.properties)
+                    """,
+                    tuple(r),
+                )
+            pva_count = len(rows)
+
+        viva_count = 0
+        if "viva_reports_cs_copilot_agents" in tables:
+            rows = self._conn.execute(
+                "SELECT agent_id, agent_name, description, surface, mode, categories, "
+                "agent_type, is_included, excluded_reason, icon FROM viva_reports_cs_copilot_agents"
+            ).fetchall()
+            for r in rows:
+                self._conn.execute(
+                    """
+                    INSERT INTO dim_agent
+                    (agent_id, display_name, description, surface, mode, categories,
+                     agent_type, is_included, excluded_reason, icon, in_viva_report)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,1)
+                    ON CONFLICT(agent_id) DO UPDATE SET
+                        display_name    = COALESCE(excluded.display_name,    dim_agent.display_name),
+                        description     = COALESCE(excluded.description,     dim_agent.description),
+                        surface         = COALESCE(excluded.surface,         dim_agent.surface),
+                        mode            = COALESCE(excluded.mode,            dim_agent.mode),
+                        categories      = COALESCE(excluded.categories,      dim_agent.categories),
+                        agent_type      = COALESCE(excluded.agent_type,      dim_agent.agent_type),
+                        is_included     = COALESCE(excluded.is_included,     dim_agent.is_included),
+                        excluded_reason = COALESCE(excluded.excluded_reason, dim_agent.excluded_reason),
+                        icon            = COALESCE(excluded.icon,            dim_agent.icon),
+                        in_viva_report  = 1
+                    """,
+                    (r["agent_id"], r["agent_name"], r["description"], r["surface"], r["mode"],
+                     r["categories"], r["agent_type"], r["is_included"], r["excluded_reason"], r["icon"]),
+                )
+            viva_count = len(rows)
+
+        dim_agent_count = self._conn.execute("SELECT COUNT(*) FROM dim_agent").fetchone()[0]
+        if dim_agent_count < max(pva_count, viva_count):
+            return  # copy didn't fully land — retry on next startup, don't mark applied
+
+        if "pva_agents" in tables:
+            self._conn.execute("DROP TABLE pva_agents")
+        if "viva_reports_cs_copilot_agents" in tables:
+            self._conn.execute("DROP TABLE viva_reports_cs_copilot_agents")
+
+        self._conn.execute("""
+            CREATE VIEW IF NOT EXISTS pva_agents AS
+            SELECT agent_id, display_name, schema_name, environment_id, created_at,
+                   modified_at, published_at, created_by, owner_id, created_in, ai_model, properties
+            FROM dim_agent
+        """)
+        self._conn.execute("""
+            CREATE VIEW IF NOT EXISTS viva_reports_cs_copilot_agents AS
+            SELECT agent_id, display_name AS agent_name, description, surface, mode,
+                   categories, agent_type, is_included, excluded_reason, icon
+            FROM dim_agent WHERE in_viva_report = 1
+        """)
+        self._mark_migration_applied("dim_agent_v1")
+
+    def _migrate_copilot_actions(self) -> None:
+        """Cluster B: fold viva_reports_copilot_adoption + _impact into
+        fact_copilot_actions_per_person / fact_copilot_work_patterns, then
+        replace both old table names with compatibility views."""
+        if self._migration_applied("copilot_actions_v1"):
+            return
+
+        tables = {
+            row[0] for row in self._conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+
+        adoption_count = 0
+        if "viva_reports_copilot_adoption" in tables:
+            rows = self._conn.execute("SELECT * FROM viva_reports_copilot_adoption").fetchall()
+            for row in rows:
+                self._upsert_copilot_actions(dict(row), "in_adoption_report")
+            adoption_count = len(rows)
+
+        impact_count = 0
+        if "viva_reports_copilot_impact" in tables:
+            rows = self._conn.execute("SELECT * FROM viva_reports_copilot_impact").fetchall()
+            for row in rows:
+                r = dict(row)
+                self._upsert_copilot_actions(r, "in_impact_report")
+                self._upsert_copilot_work_patterns(r)
+            impact_count = len(rows)
+
+        actions_count = self._conn.execute(
+            "SELECT COUNT(*) FROM fact_copilot_actions_per_person"
+        ).fetchone()[0]
+        patterns_count = self._conn.execute(
+            "SELECT COUNT(*) FROM fact_copilot_work_patterns"
+        ).fetchone()[0]
+        if actions_count < max(adoption_count, impact_count) or patterns_count < impact_count:
+            return  # copy didn't fully land — retry on next startup, don't mark applied
+
+        if "viva_reports_copilot_adoption" in tables:
+            self._conn.execute("DROP TABLE viva_reports_copilot_adoption")
+        if "viva_reports_copilot_impact" in tables:
+            self._conn.execute("DROP TABLE viva_reports_copilot_impact")
+
+        adoption_cols = ", ".join(_ADOPTION_ACTION_COLUMNS)
+        self._conn.execute(f"""
+            CREATE VIEW IF NOT EXISTS viva_reports_copilot_adoption AS
+            SELECT person_id, metric_date, {adoption_cols}
+            FROM fact_copilot_actions_per_person
+            WHERE in_adoption_report = 1
+        """)
+        impact_act_cols = ", ".join(f"a.{c}" for c in _IMPACT_ACTION_COLUMNS)
+        impact_pat_cols = ", ".join(f"p.{c}" for c in _COPILOT_WORK_PATTERN_COLUMNS)
+        self._conn.execute(f"""
+            CREATE VIEW IF NOT EXISTS viva_reports_copilot_impact AS
+            SELECT a.person_id, a.metric_date, {impact_act_cols}, {impact_pat_cols}
+            FROM fact_copilot_actions_per_person a
+            LEFT JOIN fact_copilot_work_patterns p
+                ON p.person_id = a.person_id AND p.metric_date = a.metric_date
+            WHERE a.in_impact_report = 1
+        """)
+        self._mark_migration_applied("copilot_actions_v1")
+
+    def _migrate_service_usage(self) -> None:
+        """Cluster C: fold m365_usage_active_users_services / _activity /
+        m365_usage_active_user_counts into fact_service_usage (long format),
+        then replace all three old table names with compatibility views."""
+        if self._migration_applied("service_usage_v1"):
+            return
+
+        tables = {
+            row[0] for row in self._conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+
+        expected = 0
+        if "m365_usage_active_users_services" in tables:
+            rows = self._conn.execute("SELECT * FROM m365_usage_active_users_services").fetchall()
+            for row in rows:
+                r = dict(row)
+                for svc in _SERVICE_NAMES + ("office365",):
+                    self._upsert_service_usage_row(
+                        r.get('report_refresh_date'), r.get('report_period'), svc, 'services',
+                        r.get(f'{svc}_active'), r.get(f'{svc}_inactive'), r.get('report_refresh_date'),
+                    )
+            expected += len(rows) * 7
+
+        if "m365_usage_active_users_activity" in tables:
+            rows = self._conn.execute("SELECT * FROM m365_usage_active_users_activity").fetchall()
+            for row in rows:
+                r = dict(row)
+                for svc in _SERVICE_NAMES:
+                    self._upsert_service_usage_row(
+                        r.get('report_date'), r.get('report_period'), svc, 'activity',
+                        r.get(svc), None, r.get('report_refresh_date'),
+                    )
+            expected += len(rows) * len(_SERVICE_NAMES)
+
+        if "m365_usage_active_user_counts" in tables:
+            rows = self._conn.execute("SELECT * FROM m365_usage_active_user_counts").fetchall()
+            for row in rows:
+                r = dict(row)
+                for svc in _SERVICE_NAMES + ("office365",):
+                    self._upsert_service_usage_row(
+                        r.get('report_date'), r.get('report_period'), svc, 'counts',
+                        r.get(svc), None, r.get('report_refresh_date'),
+                    )
+            expected += len(rows) * 7
+
+        actual = self._conn.execute("SELECT COUNT(*) FROM fact_service_usage").fetchone()[0]
+        if actual < expected:
+            return  # copy didn't fully land — retry on next startup, don't mark applied
+
+        for t in ("m365_usage_active_users_services", "m365_usage_active_users_activity",
+                  "m365_usage_active_user_counts"):
+            if t in tables:
+                self._conn.execute(f"DROP TABLE {t}")
+
+        services_cols = ", ".join(
+            f"MAX(CASE WHEN service_name='{s}' THEN active_count END) AS {s}_active, "
+            f"MAX(CASE WHEN service_name='{s}' THEN inactive_count END) AS {s}_inactive"
+            for s in _SERVICE_NAMES + ("office365",)
+        )
+        self._conn.execute(f"""
+            CREATE VIEW IF NOT EXISTS m365_usage_active_users_services AS
+            SELECT metric_date AS report_refresh_date, report_period, {services_cols}
+            FROM fact_service_usage WHERE metric_source = 'services'
+            GROUP BY metric_date, report_period
+        """)
+        activity_cols = ", ".join(
+            f"MAX(CASE WHEN service_name='{s}' THEN active_count END) AS {s}" for s in _SERVICE_NAMES
+        )
+        self._conn.execute(f"""
+            CREATE VIEW IF NOT EXISTS m365_usage_active_users_activity AS
+            SELECT metric_date AS report_date, report_period,
+                   MAX(report_refresh_date) AS report_refresh_date, {activity_cols}
+            FROM fact_service_usage WHERE metric_source = 'activity'
+            GROUP BY metric_date, report_period
+        """)
+        counts_cols = ", ".join(
+            f"MAX(CASE WHEN service_name='{s}' THEN active_count END) AS {s}"
+            for s in _SERVICE_NAMES + ("office365",)
+        )
+        self._conn.execute(f"""
+            CREATE VIEW IF NOT EXISTS m365_usage_active_user_counts AS
+            SELECT metric_date AS report_date, report_period,
+                   MAX(report_refresh_date) AS report_refresh_date, {counts_cols}
+            FROM fact_service_usage WHERE metric_source = 'counts'
+            GROUP BY metric_date, report_period
+        """)
+        self._mark_migration_applied("service_usage_v1")
+
+    def _migrate_dim_user(self) -> None:
+        """Cluster D: fold the display_name column out of m365_copilot_usage,
+        m365_o365_active_users, m365_usage_active_users_detail, and
+        m365_usage_users into dim_user, then DROP that column from each
+        (their fetch_* methods JOIN it back in). Unlike Clusters A-C these
+        tables aren't being renamed/replaced with views — only their
+        display_name column moves — so CREATE TABLE IF NOT EXISTS in _DDL
+        won't touch an already-existing table's columns; this explicit
+        ALTER TABLE ... DROP COLUMN is what actually removes it.
+        Each source table is verified and dropped independently, so a
+        partial failure only blocks that table's column drop and retries
+        it (only it) on the next startup."""
+        if self._migration_applied("dim_user_v1"):
+            return
+
+        sources = [
+            ("m365_copilot_usage", "user_principal_name"),
+            ("m365_o365_active_users", "user_principal_name"),
+            ("m365_usage_active_users_detail", "user_principal_name"),
+            ("m365_usage_users", "username"),
+        ]
+        tables = {
+            row[0] for row in self._conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+
+        all_done = True
+        for table, key_col in sources:
+            if table not in tables:
+                continue
+            cols = {row[1] for row in self._conn.execute(f"PRAGMA table_info({table})").fetchall()}
+            if "display_name" not in cols:
+                continue  # already migrated
+
+            rows = self._conn.execute(f"SELECT {key_col}, display_name FROM {table}").fetchall()
+            for upn, display_name in rows:
+                self._upsert_dim_user(upn, display_name)
+
+            missing = self._conn.execute(
+                f"""
+                SELECT COUNT(*) FROM {table} t
+                LEFT JOIN dim_user u ON u.user_principal_name = t.{key_col}
+                WHERE t.{key_col} IS NOT NULL AND t.{key_col} != '' AND u.user_principal_name IS NULL
+                """
+            ).fetchone()[0]
+            if missing > 0:
+                all_done = False
+                continue  # copy didn't fully land — retry this table on next startup
+
+            self._conn.execute(f"ALTER TABLE {table} DROP COLUMN display_name")
+
+        if all_done:
+            self._mark_migration_applied("dim_user_v1")
+
+    def _migrate_app_activity(self) -> None:
+        """Cluster E: fold the overlapping per-app active flags out of
+        m365_app_users and m365_usage_proplus_detail into
+        fact_user_app_activity, then DROP those columns from each source
+        table (their fetch_* methods JOIN/pivot it back in). Same
+        per-table independent verify-then-drop pattern as _migrate_dim_user."""
+        if self._migration_applied("app_activity_v1"):
+            return
+
+        sources = [
+            ("m365_app_users", _APP_USERS_COLUMNS, "m365_app_users"),
+            ("m365_usage_proplus_detail", _PROPLUS_APP_COLUMNS, "m365_usage_proplus_detail"),
+        ]
+        tables = {
+            row[0] for row in self._conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+
+        all_done = True
+        for table, app_cols, source_tag in sources:
+            if table not in tables:
+                continue
+            existing_cols = {row[1] for row in self._conn.execute(f"PRAGMA table_info({table})").fetchall()}
+            cols_to_drop = [c for c in app_cols.values() if c in existing_cols]
+            if not cols_to_drop:
+                continue  # already migrated
+
+            select_cols = ", ".join(("user_principal_name", "report_period", "report_refresh_date")
+                                     + tuple(cols_to_drop))
+            rows = self._conn.execute(f"SELECT {select_cols} FROM {table}").fetchall()
+            for row in rows:
+                r = dict(row)
+                for app, col in app_cols.items():
+                    if col not in r:
+                        continue
+                    self._upsert_app_activity_row(
+                        r["user_principal_name"], app, source_tag, r[col],
+                        r.get("report_period"), r.get("report_refresh_date"),
+                    )
+
+            missing = self._conn.execute(
+                f"""
+                SELECT COUNT(*) FROM {table} t
+                LEFT JOIN fact_user_app_activity f
+                    ON f.user_principal_name = t.user_principal_name AND f.source = '{source_tag}'
+                WHERE t.user_principal_name IS NOT NULL AND t.user_principal_name != ''
+                  AND f.user_principal_name IS NULL
+                """
+            ).fetchone()[0]
+            if missing > 0:
+                all_done = False
+                continue  # copy didn't fully land — retry this table on next startup
+
+            for col in cols_to_drop:
+                self._conn.execute(f"ALTER TABLE {table} DROP COLUMN {col}")
+
+        if all_done:
+            self._mark_migration_applied("app_activity_v1")
 
     def upsert(self, events: list[dict], connector_calls: list[dict]) -> tuple[int, int]:
         """Insert new records, skip duplicates. Returns (new_events, new_calls)."""
@@ -1247,7 +1839,13 @@ class SqliteStore:
         return [_to_call_dict(r) for r in rows]
 
     def upsert_agents(self, agents: list[dict]) -> int:
-        """Insert or replace agent records. Returns count of rows written."""
+        """Insert or update dim_agent from Dataverse/PP-Admin agent records
+        (pva_agents is a compatibility view over dim_agent). Multiple callers
+        of this method supply different column subsets (dataverse.py vs.
+        powerplatform_admin.py) — COALESCE preserves whichever source already
+        populated a column instead of the previous full-row REPLACE, which
+        would null out one source's columns when the other ran afterward.
+        Returns count of rows written."""
         _known = {
             "id", "botId", "name", "displayName", "schemaName",
             "environmentId", "createdDateTime", "modifiedDateTime",
@@ -1259,24 +1857,36 @@ class SqliteStore:
             for b in agents:
                 cur = self._conn.execute(
                     """
-                    INSERT OR REPLACE INTO pva_agents
+                    INSERT INTO dim_agent
                     (agent_id, display_name, schema_name, environment_id,
                      created_at, modified_at, published_at,
                      created_by, owner_id, created_in, ai_model, properties)
                     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                    ON CONFLICT(agent_id) DO UPDATE SET
+                        display_name   = COALESCE(excluded.display_name,   dim_agent.display_name),
+                        schema_name    = COALESCE(excluded.schema_name,    dim_agent.schema_name),
+                        environment_id = COALESCE(excluded.environment_id, dim_agent.environment_id),
+                        created_at     = COALESCE(excluded.created_at,     dim_agent.created_at),
+                        modified_at    = COALESCE(excluded.modified_at,    dim_agent.modified_at),
+                        published_at   = COALESCE(excluded.published_at,   dim_agent.published_at),
+                        created_by     = COALESCE(excluded.created_by,     dim_agent.created_by),
+                        owner_id       = COALESCE(excluded.owner_id,       dim_agent.owner_id),
+                        created_in     = COALESCE(excluded.created_in,     dim_agent.created_in),
+                        ai_model       = COALESCE(excluded.ai_model,       dim_agent.ai_model),
+                        properties     = COALESCE(excluded.properties,     dim_agent.properties)
                     """,
                     (
-                        b.get("id") or b.get("botId", ""),
-                        b.get("name") or b.get("displayName", ""),
-                        b.get("schemaName", ""),
-                        b.get("environmentId", ""),
-                        b.get("createdDateTime", ""),
-                        b.get("modifiedDateTime", ""),
-                        b.get("publishedDateTime", ""),
-                        b.get("createdBy", ""),
-                        b.get("ownerId", ""),
-                        b.get("createdIn", ""),
-                        b.get("aiModel", ""),
+                        b.get("id") or b.get("botId") or None,
+                        b.get("name") or b.get("displayName") or None,
+                        b.get("schemaName") or None,
+                        b.get("environmentId") or None,
+                        b.get("createdDateTime") or None,
+                        b.get("modifiedDateTime") or None,
+                        b.get("publishedDateTime") or None,
+                        b.get("createdBy") or None,
+                        b.get("ownerId") or None,
+                        b.get("createdIn") or None,
+                        b.get("aiModel") or None,
                         json.dumps({k: v for k, v in b.items() if k not in _known}),
                     ),
                 )
@@ -1356,7 +1966,7 @@ class SqliteStore:
         rows = self._conn.execute(
             "SELECT agent_id, display_name, schema_name, environment_id, "
             "created_at, modified_at, published_at, created_by, owner_id, created_in, ai_model "
-            "FROM pva_agents ORDER BY display_name"
+            "FROM dim_agent ORDER BY display_name"
         ).fetchall()
         return [dict(r) for r in rows]
 
@@ -1426,14 +2036,32 @@ class SqliteStore:
     # M365 Copilot + Teams usage tables
     # ------------------------------------------------------------------
 
+    def _upsert_dim_user(self, upn: str, display_name: str | None) -> None:
+        """COALESCE-upsert a user's display_name into dim_user. Called from
+        every fetch source that observes a user, so whichever source runs
+        first doesn't get overwritten with a blank name by one that doesn't
+        carry it."""
+        if not upn:
+            return
+        self._conn.execute(
+            """
+            INSERT INTO dim_user (user_principal_name, display_name)
+            VALUES (?, ?)
+            ON CONFLICT(user_principal_name) DO UPDATE SET
+                display_name = COALESCE(excluded.display_name, dim_user.display_name)
+            """,
+            (upn, display_name or None),
+        )
+
     def upsert_copilot_usage(self, rows: list[dict]) -> int:
         written = 0
         with self._conn:
             for r in rows:
+                self._upsert_dim_user(r["user_principal_name"], r.get("display_name"))
                 cur = self._conn.execute(
                     """INSERT OR REPLACE INTO m365_copilot_usage VALUES
-                    (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                    (r["user_principal_name"], r.get("display_name", ""),
+                    (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (r["user_principal_name"],
                      r.get("last_activity_date", ""), r.get("teams_chats"),
                      r.get("teams_meetings"), r.get("word"), r.get("excel"),
                      r.get("powerpoint"), r.get("outlook"), r.get("onenote"),
@@ -1461,7 +2089,12 @@ class SqliteStore:
 
     def fetch_copilot_usage(self) -> list[dict]:
         rows = self._conn.execute(
-            "SELECT * FROM m365_copilot_usage ORDER BY user_principal_name"
+            """
+            SELECT m.*, u.display_name
+            FROM m365_copilot_usage m
+            LEFT JOIN dim_user u ON u.user_principal_name = m.user_principal_name
+            ORDER BY m.user_principal_name
+            """
         ).fetchall()
         return [dict(r) for r in rows]
 
@@ -1909,14 +2542,34 @@ class SqliteStore:
         return [dict(r) for r in rows]
 
     def upsert_viva_reports_cs_copilot_agents(self, rows: list[dict]) -> int:
+        """Insert or update dim_agent's Viva-report-derived columns
+        (viva_reports_cs_copilot_agents is a compatibility view over
+        dim_agent, filtered to in_viva_report=1). Returns rows written."""
         written = 0
         with self._conn:
             for r in rows:
                 cur = self._conn.execute(
-                    """INSERT OR REPLACE INTO viva_reports_cs_copilot_agents VALUES (?,?,?,?,?,?,?,?,?,?)""",
-                    (r['agent_id'], r.get('agent_name'), r.get('description'), r.get('surface'),
-                     r.get('mode'), r.get('categories'), r.get('agent_type'),
-                     r.get('is_included', 1), r.get('excluded_reason'), r.get('icon')),
+                    """
+                    INSERT INTO dim_agent
+                    (agent_id, display_name, description, surface, mode,
+                     categories, agent_type, is_included, excluded_reason, icon, in_viva_report)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,1)
+                    ON CONFLICT(agent_id) DO UPDATE SET
+                        display_name    = COALESCE(excluded.display_name,    dim_agent.display_name),
+                        description     = COALESCE(excluded.description,     dim_agent.description),
+                        surface         = COALESCE(excluded.surface,         dim_agent.surface),
+                        mode            = COALESCE(excluded.mode,            dim_agent.mode),
+                        categories      = COALESCE(excluded.categories,      dim_agent.categories),
+                        agent_type      = COALESCE(excluded.agent_type,      dim_agent.agent_type),
+                        is_included     = COALESCE(excluded.is_included,     dim_agent.is_included),
+                        excluded_reason = COALESCE(excluded.excluded_reason, dim_agent.excluded_reason),
+                        icon            = COALESCE(excluded.icon,            dim_agent.icon),
+                        in_viva_report  = 1
+                    """,
+                    (r['agent_id'], r.get('agent_name') or None, r.get('description') or None,
+                     r.get('surface') or None, r.get('mode') or None, r.get('categories') or None,
+                     r.get('agent_type') or None, r.get('is_included', 1), r.get('excluded_reason') or None,
+                     r.get('icon') or None),
                 )
                 written += cur.rowcount
         return written
@@ -1924,8 +2577,8 @@ class SqliteStore:
     def fetch_viva_reports_cs_copilot_agents(self) -> dict[str, dict]:
         """Returns {agent_id: row_dict} for O(1) lookup in sheet writers."""
         rows = self._conn.execute(
-            "SELECT agent_id, agent_name, description, surface, mode, categories, agent_type, is_included "
-            "FROM viva_reports_cs_copilot_agents"
+            "SELECT agent_id, display_name AS agent_name, description, surface, mode, "
+            "categories, agent_type, is_included FROM dim_agent WHERE in_viva_report = 1"
         ).fetchall()
         return {r['agent_id']: dict(r) for r in rows}
 
@@ -1966,87 +2619,60 @@ class SqliteStore:
     # ------------------------------------------------------------------
 
     def upsert_viva_reports_copilot_adoption(self, rows: list[dict]) -> int:
+        """viva_reports_copilot_adoption is now a compatibility view over
+        fact_copilot_actions_per_person (see _migrate())."""
         written = 0
         with self._conn:
             for r in rows:
-                cur = self._conn.execute(
-                    """INSERT OR REPLACE INTO viva_reports_copilot_adoption VALUES
-                    (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                    (
-                        r['person_id'], r['metric_date'], r.get('organization'),
-                        r.get('chat_work_outlook'), r.get('chat_work_teams'),
-                        r.get('chat_web_teams'), r.get('chat_web_outlook'),
-                        r.get('chat_web_prompts'), r.get('chat_work_prompts'),
-                        r.get('word_work_prompts'), r.get('word_web_prompts'),
-                        r.get('excel_work_prompts'), r.get('excel_web_prompts'),
-                        r.get('ppt_work_prompts'), r.get('ppt_web_prompts'),
-                        r.get('word_chat_prompts'), r.get('ppt_chat_prompts'),
-                        r.get('excel_chat_prompts'),
-                        r.get('intelligent_recap_actions'), r.get('visualize_table_word'),
-                        r.get('add_content_ppt'), r.get('draft_word_doc'),
-                        r.get('summarize_word_doc'), r.get('email_coaching'),
-                        r.get('generate_email_draft'), r.get('summarize_email_thread'),
-                        r.get('excel_analysis'), r.get('excel_formatting'),
-                        r.get('create_excel_formula'), r.get('summarize_meeting_teams'),
-                        r.get('summarize_ppt'), r.get('create_ppt'),
-                        r.get('rewrite_text_word'), r.get('summarize_chat_teams'),
-                        r.get('compose_chat_teams'),
-                        r.get('total_copilot_actions'), r.get('total_copilot_active_days'),
-                        r.get('total_copilot_enabled_days'), r.get('meeting_hours_summarized'),
-                        r.get('actions_copilot_chat'), r.get('actions_excel'),
-                        r.get('actions_outlook'), r.get('actions_powerpoint'),
-                        r.get('actions_teams'), r.get('actions_word'),
-                    ),
-                )
-                written += cur.rowcount
+                written += self._upsert_copilot_actions(r, "in_adoption_report")
         return written
 
     def fetch_viva_reports_copilot_adoption(self) -> list[dict]:
+        cols = ", ".join(_ADOPTION_ACTION_COLUMNS)
         rows = self._conn.execute(
-            "SELECT * FROM viva_reports_copilot_adoption ORDER BY metric_date DESC, person_id"
+            f"SELECT person_id, metric_date, {cols} FROM fact_copilot_actions_per_person "
+            "WHERE in_adoption_report = 1 ORDER BY metric_date DESC, person_id"
         ).fetchall()
         return [dict(r) for r in rows]
 
+    def _upsert_copilot_work_patterns(self, r: dict) -> None:
+        pat_cols = _COPILOT_WORK_PATTERN_COLUMNS
+        col_list = ", ".join(("person_id", "metric_date") + pat_cols)
+        set_clause = ",\n                    ".join(f"{c} = excluded.{c}" for c in pat_cols)
+        self._conn.execute(
+            f"""
+            INSERT INTO fact_copilot_work_patterns ({col_list})
+            VALUES ({", ".join(["?"] * (2 + len(pat_cols)))})
+            ON CONFLICT(person_id, metric_date) DO UPDATE SET
+                {set_clause}
+            """,
+            (r['person_id'], r['metric_date'], *(r.get(c) for c in pat_cols)),
+        )
+
     def upsert_viva_reports_copilot_impact(self, rows: list[dict]) -> int:
+        """viva_reports_copilot_impact is now a compatibility view joining
+        fact_copilot_actions_per_person (shared action columns) and
+        fact_copilot_work_patterns (Impact-only work-pattern columns) —
+        see _migrate()."""
         written = 0
         with self._conn:
             for r in rows:
-                cur = self._conn.execute(
-                    """INSERT OR REPLACE INTO viva_reports_copilot_impact VALUES
-                    (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                    (
-                        r['person_id'], r['metric_date'], r.get('organization'),
-                        r.get('is_active'), r.get('weekend_days'),
-                        r.get('total_copilot_actions'), r.get('total_copilot_active_days'),
-                        r.get('total_copilot_enabled_days'), r.get('intelligent_recap_actions'),
-                        r.get('chat_web_prompts'), r.get('meeting_hours_summarized'),
-                        r.get('meetings_summarized'), r.get('summarize_meeting_teams'),
-                        r.get('summarize_chat_teams'), r.get('compose_chat_teams'),
-                        r.get('chat_conversations_summarized'),
-                        r.get('word_work_prompts'), r.get('word_web_prompts'),
-                        r.get('excel_work_prompts'), r.get('excel_web_prompts'),
-                        r.get('ppt_work_prompts'), r.get('ppt_web_prompts'),
-                        r.get('visualize_table_word'), r.get('add_content_ppt'),
-                        r.get('organize_ppt'), r.get('chat_work_prompts'),
-                        r.get('summarize_email_thread'), r.get('email_coaching'),
-                        r.get('generate_email_draft'), r.get('summarize_word_doc'),
-                        r.get('summarize_ppt'), r.get('create_ppt'),
-                        r.get('rewrite_text_word'), r.get('draft_word_doc'),
-                        r.get('excel_analysis'), r.get('create_excel_formula'),
-                        r.get('excel_formatting'), r.get('emails_sent_with_copilot'),
-                        r.get('attended_meetings'), r.get('meetings'),
-                        r.get('meeting_hours'), r.get('uninterrupted_hours'),
-                        r.get('small_meeting_hours'), r.get('multitasking_hours'),
-                        r.get('conflicting_meeting_hours'),
-                        r.get('chats_sent'), r.get('emails_sent'),
-                    ),
-                )
-                written += cur.rowcount
+                written += self._upsert_copilot_actions(r, "in_impact_report")
+                self._upsert_copilot_work_patterns(r)
         return written
 
     def fetch_viva_reports_copilot_impact(self) -> list[dict]:
+        act_cols = ", ".join(f"a.{c}" for c in _IMPACT_ACTION_COLUMNS)
+        pat_cols = ", ".join(f"p.{c}" for c in _COPILOT_WORK_PATTERN_COLUMNS)
         rows = self._conn.execute(
-            "SELECT * FROM viva_reports_copilot_impact ORDER BY metric_date DESC, person_id"
+            f"""
+            SELECT a.person_id, a.metric_date, {act_cols}, {pat_cols}
+            FROM fact_copilot_actions_per_person a
+            LEFT JOIN fact_copilot_work_patterns p
+                ON p.person_id = a.person_id AND p.metric_date = a.metric_date
+            WHERE a.in_impact_report = 1
+            ORDER BY a.metric_date DESC, a.person_id
+            """
         ).fetchall()
         return [dict(r) for r in rows]
 
@@ -2259,10 +2885,11 @@ class SqliteStore:
         written = 0
         with self._conn:
             for r in rows:
+                self._upsert_dim_user(r.get('username'), r.get('display_name'))
                 cur = self._conn.execute(
-                    """INSERT OR REPLACE INTO m365_usage_users VALUES (?,?,?,?,?)""",
+                    """INSERT OR REPLACE INTO m365_usage_users VALUES (?,?,?,?)""",
                     (
-                        r.get('username'), r.get('display_name'), r.get('agents_used'),
+                        r.get('username'), r.get('agents_used'),
                         r.get('agent_responses_received'), r.get('last_activity_date'),
                     ),
                 )
@@ -2271,7 +2898,12 @@ class SqliteStore:
 
     def fetch_m365_usage_users(self) -> list[dict]:
         rows = self._conn.execute(
-            "SELECT * FROM m365_usage_users ORDER BY agent_responses_received DESC"
+            """
+            SELECT m.*, u.display_name
+            FROM m365_usage_users m
+            LEFT JOIN dim_user u ON u.user_principal_name = m.username
+            ORDER BY m.agent_responses_received DESC
+            """
         ).fetchall()
         return [dict(r) for r in rows]
 
@@ -2395,10 +3027,11 @@ class SqliteStore:
         written = 0
         with self._conn:
             for r in rows:
+                self._upsert_dim_user(r.get("user_principal_name"), r.get("display_name"))
                 cur = self._conn.execute(
                     """INSERT OR REPLACE INTO m365_o365_active_users VALUES
-                    (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                    (r.get("user_principal_name"), r.get("display_name"), r.get("is_deleted", 0),
+                    (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (r.get("user_principal_name"), r.get("is_deleted", 0),
                      r.get("exchange_last_activity"), r.get("onedrive_last_activity"),
                      r.get("sharepoint_last_activity"), r.get("teams_last_activity"),
                      r.get("yammer_last_activity"),
@@ -2412,29 +3045,63 @@ class SqliteStore:
 
     def fetch_o365_active_users(self) -> list[dict]:
         rows = self._conn.execute(
-            "SELECT * FROM m365_o365_active_users ORDER BY user_principal_name"
+            """
+            SELECT m.*, u.display_name
+            FROM m365_o365_active_users m
+            LEFT JOIN dim_user u ON u.user_principal_name = m.user_principal_name
+            ORDER BY m.user_principal_name
+            """
         ).fetchall()
         return [dict(r) for r in rows]
 
+    def _upsert_app_activity_row(self, upn, app_name, source, is_active, report_period, report_refresh_date) -> int:
+        cur = self._conn.execute(
+            """INSERT OR REPLACE INTO fact_user_app_activity
+               (user_principal_name, app_name, source, is_active, report_period, report_refresh_date)
+               VALUES (?,?,?,?,?,?)""",
+            (upn, app_name, source, is_active, report_period, report_refresh_date),
+        )
+        return cur.rowcount
+
     def upsert_m365_app_users(self, rows: list[dict]) -> int:
+        """outlook/word/excel/ppt/onenote/teams _active flags now live in
+        fact_user_app_activity (overlap with m365_usage_proplus_detail);
+        m365_app_users keeps only its own sharepoint/onedrive flags."""
         written = 0
         with self._conn:
             for r in rows:
+                upn = r.get("user_principal_name")
+                for app, col in _APP_USERS_COLUMNS.items():
+                    written += self._upsert_app_activity_row(
+                        upn, app, "m365_app_users", r.get(col),
+                        r.get("report_period"), r.get("report_refresh_date"),
+                    )
                 cur = self._conn.execute(
                     """INSERT OR REPLACE INTO m365_app_users VALUES
-                    (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                    (r.get("user_principal_name"), r.get("last_activation_date"),
+                    (?,?,?,?,?,?,?)""",
+                    (upn, r.get("last_activation_date"),
                      r.get("last_activity_date"), r.get("report_refresh_date"), r.get("report_period"),
-                     r.get("outlook_active"), r.get("word_active"), r.get("excel_active"),
-                     r.get("ppt_active"), r.get("onenote_active"), r.get("teams_active"),
                      r.get("sharepoint_active"), r.get("onedrive_active")),
                 )
                 written += cur.rowcount
         return written
 
     def fetch_m365_app_users(self) -> list[dict]:
+        app_cols = ", ".join(
+            f"MAX(CASE WHEN f.app_name='{app}' THEN f.is_active END) AS {col}"
+            for app, col in _APP_USERS_COLUMNS.items()
+        )
         rows = self._conn.execute(
-            "SELECT * FROM m365_app_users ORDER BY user_principal_name"
+            f"""
+            SELECT m.user_principal_name, m.last_activation_date, m.last_activity_date,
+                   m.report_refresh_date, m.report_period, m.sharepoint_active, m.onedrive_active,
+                   {app_cols}
+            FROM m365_app_users m
+            LEFT JOIN fact_user_app_activity f
+                ON f.user_principal_name = m.user_principal_name AND f.source = 'm365_app_users'
+            GROUP BY m.user_principal_name
+            ORDER BY m.user_principal_name
+            """
         ).fetchall()
         return [dict(r) for r in rows]
 
@@ -2541,70 +3208,106 @@ class SqliteStore:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    def _upsert_service_usage_row(
+        self, metric_date, report_period, service_name, metric_source,
+        active_count, inactive_count, report_refresh_date,
+    ) -> int:
+        cur = self._conn.execute(
+            """INSERT OR REPLACE INTO fact_service_usage
+               (metric_date, report_period, service_name, metric_source,
+                active_count, inactive_count, report_refresh_date)
+               VALUES (?,?,?,?,?,?,?)""",
+            (metric_date, report_period, service_name, metric_source,
+             active_count, inactive_count, report_refresh_date),
+        )
+        return cur.rowcount
+
     def upsert_m365_usage_active_users_services(self, rows: list[dict]) -> int:
+        """m365_usage_active_users_services is now a compatibility view
+        pivoting fact_service_usage back to its original wide shape."""
         written = 0
         with self._conn:
             for r in rows:
-                cur = self._conn.execute(
-                    """INSERT OR REPLACE INTO m365_usage_active_users_services VALUES
-                    (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                    (r.get('report_refresh_date'), r.get('report_period'),
-                     r.get('exchange_active'), r.get('exchange_inactive'),
-                     r.get('onedrive_active'), r.get('onedrive_inactive'),
-                     r.get('sharepoint_active'), r.get('sharepoint_inactive'),
-                     r.get('skype_active'), r.get('skype_inactive'),
-                     r.get('yammer_active'), r.get('yammer_inactive'),
-                     r.get('teams_active'), r.get('teams_inactive'),
-                     r.get('office365_active'), r.get('office365_inactive')),
-                )
-                written += cur.rowcount
+                for svc in _SERVICE_NAMES + ("office365",):
+                    written += self._upsert_service_usage_row(
+                        r.get('report_refresh_date'), r.get('report_period'), svc, 'services',
+                        r.get(f'{svc}_active'), r.get(f'{svc}_inactive'), r.get('report_refresh_date'),
+                    )
         return written
 
     def fetch_m365_usage_active_users_services(self) -> list[dict]:
+        case_cols = ", ".join(
+            f"MAX(CASE WHEN service_name='{s}' THEN active_count END) AS {s}_active, "
+            f"MAX(CASE WHEN service_name='{s}' THEN inactive_count END) AS {s}_inactive"
+            for s in _SERVICE_NAMES + ("office365",)
+        )
         rows = self._conn.execute(
-            "SELECT * FROM m365_usage_active_users_services ORDER BY report_refresh_date DESC"
+            f"""
+            SELECT metric_date AS report_refresh_date, report_period, {case_cols}
+            FROM fact_service_usage
+            WHERE metric_source = 'services'
+            GROUP BY metric_date, report_period
+            ORDER BY metric_date DESC
+            """
         ).fetchall()
         return [dict(r) for r in rows]
 
     def upsert_m365_usage_active_users_activity(self, rows: list[dict]) -> int:
+        """m365_usage_active_users_activity is now a compatibility view
+        pivoting fact_service_usage back to its original wide shape."""
         written = 0
         with self._conn:
             for r in rows:
-                cur = self._conn.execute(
-                    """INSERT OR REPLACE INTO m365_usage_active_users_activity VALUES
-                    (?,?,?,?,?,?,?,?,?)""",
-                    (r.get('report_date'), r.get('report_period'),
-                     r.get('report_refresh_date'), r.get('exchange'),
-                     r.get('onedrive'), r.get('sharepoint'),
-                     r.get('skype'), r.get('yammer'), r.get('teams')),
-                )
-                written += cur.rowcount
+                for svc in _SERVICE_NAMES:
+                    written += self._upsert_service_usage_row(
+                        r.get('report_date'), r.get('report_period'), svc, 'activity',
+                        r.get(svc), None, r.get('report_refresh_date'),
+                    )
         return written
 
     def fetch_m365_usage_active_users_activity(self) -> list[dict]:
+        case_cols = ", ".join(
+            f"MAX(CASE WHEN service_name='{s}' THEN active_count END) AS {s}" for s in _SERVICE_NAMES
+        )
         rows = self._conn.execute(
-            "SELECT * FROM m365_usage_active_users_activity ORDER BY report_date DESC"
+            f"""
+            SELECT metric_date AS report_date, report_period,
+                   MAX(report_refresh_date) AS report_refresh_date, {case_cols}
+            FROM fact_service_usage
+            WHERE metric_source = 'activity'
+            GROUP BY metric_date, report_period
+            ORDER BY metric_date DESC
+            """
         ).fetchall()
         return [dict(r) for r in rows]
 
     def upsert_m365_usage_active_user_counts(self, rows: list[dict]) -> int:
+        """m365_usage_active_user_counts is now a compatibility view
+        pivoting fact_service_usage back to its original wide shape."""
         written = 0
         with self._conn:
             for r in rows:
-                cur = self._conn.execute(
-                    """INSERT OR REPLACE INTO m365_usage_active_user_counts VALUES
-                    (?,?,?,?,?,?,?,?,?,?)""",
-                    (r.get('report_date'), r.get('report_period'),
-                     r.get('report_refresh_date'), r.get('office365'),
-                     r.get('exchange'), r.get('onedrive'), r.get('sharepoint'),
-                     r.get('skype'), r.get('yammer'), r.get('teams')),
-                )
-                written += cur.rowcount
+                for svc in _SERVICE_NAMES + ("office365",):
+                    written += self._upsert_service_usage_row(
+                        r.get('report_date'), r.get('report_period'), svc, 'counts',
+                        r.get(svc), None, r.get('report_refresh_date'),
+                    )
         return written
 
     def fetch_m365_usage_active_user_counts(self) -> list[dict]:
+        case_cols = ", ".join(
+            f"MAX(CASE WHEN service_name='{s}' THEN active_count END) AS {s}"
+            for s in _SERVICE_NAMES + ("office365",)
+        )
         rows = self._conn.execute(
-            "SELECT * FROM m365_usage_active_user_counts ORDER BY report_date DESC"
+            f"""
+            SELECT metric_date AS report_date, report_period,
+                   MAX(report_refresh_date) AS report_refresh_date, {case_cols}
+            FROM fact_service_usage
+            WHERE metric_source = 'counts'
+            GROUP BY metric_date, report_period
+            ORDER BY metric_date DESC
+            """
         ).fetchall()
         return [dict(r) for r in rows]
 
@@ -2612,11 +3315,12 @@ class SqliteStore:
         written = 0
         with self._conn:
             for r in rows:
+                self._upsert_dim_user(r.get('user_principal_name'), r.get('display_name'))
                 cur = self._conn.execute(
                     """INSERT OR REPLACE INTO m365_usage_active_users_detail VALUES
-                    (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (r.get('user_principal_name'), r.get('report_refresh_date'),
-                     r.get('display_name'), r.get('is_deleted'), r.get('deleted_date'),
+                     r.get('is_deleted'), r.get('deleted_date'),
                      r.get('has_exchange'), r.get('has_onedrive'), r.get('has_sharepoint'),
                      r.get('has_skype'), r.get('has_yammer'), r.get('has_teams'),
                      r.get('exchange_last_activity'), r.get('onedrive_last_activity'),
@@ -2632,7 +3336,12 @@ class SqliteStore:
 
     def fetch_m365_usage_active_users_detail(self) -> list[dict]:
         rows = self._conn.execute(
-            "SELECT * FROM m365_usage_active_users_detail ORDER BY user_principal_name"
+            """
+            SELECT m.*, u.display_name
+            FROM m365_usage_active_users_detail m
+            LEFT JOIN dim_user u ON u.user_principal_name = m.user_principal_name
+            ORDER BY m.user_principal_name
+            """
         ).fetchall()
         return [dict(r) for r in rows]
 
@@ -2678,25 +3387,45 @@ class SqliteStore:
         return [dict(r) for r in rows]
 
     def upsert_m365_usage_proplus_detail(self, rows: list[dict]) -> int:
+        """outlook/word/excel/powerpoint/onenote/teams flags now live in
+        fact_user_app_activity (overlap with m365_app_users);
+        m365_usage_proplus_detail keeps only its own platform flags."""
         written = 0
         with self._conn:
             for r in rows:
+                upn = r.get('user_principal_name')
+                for app, col in _PROPLUS_APP_COLUMNS.items():
+                    written += self._upsert_app_activity_row(
+                        upn, app, "m365_usage_proplus_detail", r.get(col),
+                        r.get('report_period'), r.get('report_refresh_date'),
+                    )
                 cur = self._conn.execute(
                     """INSERT OR REPLACE INTO m365_usage_proplus_detail VALUES
-                    (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                    (r.get('user_principal_name'), r.get('report_refresh_date'),
+                    (?,?,?,?,?,?,?,?,?)""",
+                    (upn, r.get('report_refresh_date'),
                      r.get('last_activation_date'), r.get('last_activity_date'),
                      r.get('report_period'), r.get('windows'), r.get('mac'),
-                     r.get('mobile'), r.get('web'), r.get('outlook'),
-                     r.get('word'), r.get('excel'), r.get('powerpoint'),
-                     r.get('onenote'), r.get('teams')),
+                     r.get('mobile'), r.get('web')),
                 )
                 written += cur.rowcount
         return written
 
     def fetch_m365_usage_proplus_detail(self) -> list[dict]:
+        app_cols = ", ".join(
+            f"MAX(CASE WHEN f.app_name='{app}' THEN f.is_active END) AS {col}"
+            for app, col in _PROPLUS_APP_COLUMNS.items()
+        )
         rows = self._conn.execute(
-            "SELECT * FROM m365_usage_proplus_detail ORDER BY user_principal_name"
+            f"""
+            SELECT m.user_principal_name, m.report_refresh_date, m.last_activation_date,
+                   m.last_activity_date, m.report_period, m.windows, m.mac, m.mobile, m.web,
+                   {app_cols}
+            FROM m365_usage_proplus_detail m
+            LEFT JOIN fact_user_app_activity f
+                ON f.user_principal_name = m.user_principal_name AND f.source = 'm365_usage_proplus_detail'
+            GROUP BY m.user_principal_name
+            ORDER BY m.user_principal_name
+            """
         ).fetchall()
         return [dict(r) for r in rows]
 
