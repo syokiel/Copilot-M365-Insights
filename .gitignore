@@ -13,3 +13,5 @@ config/proxy-ca.pem
 config/settings.py
 config/datasources.py
 
+agent_telemetry_mwc.db.pre-consolidation-backup
+.codex/config.toml
