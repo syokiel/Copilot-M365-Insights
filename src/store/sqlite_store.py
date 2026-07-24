@@ -694,13 +694,30 @@ CREATE TABLE IF NOT EXISTS m365_admin_agent_inventory (
 -- ── M365 Usage — Agent Activity (30-day rolling snapshot) ────────────────
 
 CREATE TABLE IF NOT EXISTS m365_usage_agents (
-    agent_id                TEXT PRIMARY KEY,
+    agent_id                TEXT PRIMARY KEY,  -- M365 Admin usage-report ID; NOT the Copilot Studio bot GUID
     agent_name              TEXT,
     creator_type            TEXT,
     active_users_licensed   INTEGER,
     active_users_unlicensed INTEGER,
     responses_sent          INTEGER,
-    last_activity_date      TEXT
+    last_activity_date      TEXT,
+    resolved_agent_id       TEXT                -- Copilot Studio bot GUID (matches dim_agent.agent_id /
+                                                 -- tokenomics_entitlement_per_agent.agent_id); populated at
+                                                 -- import time when agent_name resolves unambiguously via
+                                                 -- m365_admin_agent_inventory.bot_id or usage_agent_id_overrides
+);
+
+-- ── Usage Agent ID Overrides — manual crosswalk for ambiguous agent names ──
+-- m365_usage_agents.agent_id uses a different ID scheme than the Copilot
+-- Studio bot GUID used by dim_agent/tokenomics, so it can't be joined
+-- directly. Auto-resolution (see SqliteStore._resolve_usage_agent_ids) skips
+-- any agent_name that maps to more than one bot_id in
+-- m365_admin_agent_inventory (common when the same agent name is cloned
+-- across dev/test/prod environments). Add a row here to force the mapping —
+-- see imports/usage_agent_id_overrides.csv.
+CREATE TABLE IF NOT EXISTS usage_agent_id_overrides (
+    agent_name TEXT PRIMARY KEY,
+    bot_id     TEXT NOT NULL
 );
 
 -- ── M365 Usage — Per-User Agent Activity ─────────────────────────────────
@@ -1249,6 +1266,15 @@ class SqliteStore:
         }
         if "bot_id" in sol_cols:
             self._conn.execute("ALTER TABLE pva_agent_solutions RENAME COLUMN bot_id TO agent_id")
+
+        # Add resolved_agent_id (Copilot Studio bot GUID crosswalk) to m365_usage_agents
+        if "m365_usage_agents" in tables:
+            usage_cols = {
+                row[1]
+                for row in self._conn.execute("PRAGMA table_info(m365_usage_agents)").fetchall()
+            }
+            if "resolved_agent_id" not in usage_cols:
+                self._conn.execute("ALTER TABLE m365_usage_agents ADD COLUMN resolved_agent_id TEXT")
 
         # Add OTel GenAI attribute columns to conversation_events and connector_calls
         event_cols = {row[1] for row in self._conn.execute("PRAGMA table_info(conversation_events)").fetchall()}
@@ -2721,7 +2747,10 @@ class SqliteStore:
         with self._conn:
             for r in rows:
                 cur = self._conn.execute(
-                    """INSERT OR REPLACE INTO m365_usage_agents VALUES (?,?,?,?,?,?,?)""",
+                    """INSERT OR REPLACE INTO m365_usage_agents
+                    (agent_id, agent_name, creator_type, active_users_licensed,
+                     active_users_unlicensed, responses_sent, last_activity_date)
+                    VALUES (?,?,?,?,?,?,?)""",
                     (
                         r.get('agent_id'), r.get('agent_name'), r.get('creator_type'),
                         r.get('active_users_licensed'), r.get('active_users_unlicensed'),
@@ -2729,13 +2758,61 @@ class SqliteStore:
                     ),
                 )
                 written += cur.rowcount
+            self._resolve_usage_agent_ids()
         return written
+
+    def _resolve_usage_agent_ids(self) -> None:
+        """Populate m365_usage_agents.resolved_agent_id with the Copilot Studio
+        bot GUID, preferring a manual override and otherwise only resolving
+        agent_names that map to exactly one bot_id in the inventory (leaves
+        ambiguous/unmatched names NULL rather than guessing)."""
+        self._conn.execute("""
+            UPDATE m365_usage_agents
+            SET resolved_agent_id = (
+                SELECT o.bot_id FROM usage_agent_id_overrides o
+                WHERE o.agent_name = m365_usage_agents.agent_name
+            )
+            WHERE agent_name IN (SELECT agent_name FROM usage_agent_id_overrides)
+        """)
+        self._conn.execute("""
+            UPDATE m365_usage_agents
+            SET resolved_agent_id = (
+                SELECT i.bot_id FROM m365_admin_agent_inventory i
+                WHERE i.name = m365_usage_agents.agent_name AND i.bot_id != ''
+                GROUP BY i.name
+                HAVING COUNT(DISTINCT i.bot_id) = 1
+            )
+            WHERE resolved_agent_id IS NULL
+        """)
 
     def fetch_m365_usage_agents(self) -> list[dict]:
         rows = self._conn.execute(
             "SELECT * FROM m365_usage_agents ORDER BY responses_sent DESC"
         ).fetchall()
         return [dict(r) for r in rows]
+
+    def fetch_m365_usage_agents_unresolved(self) -> list[dict]:
+        """Agent names with no resolved Copilot Studio GUID — either no inventory
+        match or an ambiguous one (same name, multiple bot_ids). Use this list to
+        populate imports/usage_agent_id_overrides.csv."""
+        rows = self._conn.execute(
+            """SELECT agent_id, agent_name, responses_sent, last_activity_date
+               FROM m365_usage_agents
+               WHERE resolved_agent_id IS NULL
+               ORDER BY responses_sent DESC"""
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def upsert_usage_agent_id_overrides(self, rows: list[dict]) -> int:
+        written = 0
+        with self._conn:
+            for r in rows:
+                cur = self._conn.execute(
+                    """INSERT OR REPLACE INTO usage_agent_id_overrides VALUES (?,?)""",
+                    (r.get('agent_name'), r.get('bot_id')),
+                )
+                written += cur.rowcount
+        return written
 
     def upsert_m365_usage_agent_users(self, rows: list[dict]) -> int:
         written = 0

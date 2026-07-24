@@ -57,6 +57,7 @@ Governance and telemetry reporting for Microsoft Copilot Studio agents across an
 | `M365USAGE_PROPLUS_DETAIL` | M365 Admin > Reports > Usage > Microsoft 365 Apps usage > Usage > Export | Per-user app/platform usage flags and last-activity dates |
 | `BILLING_LICENCES` | M365 Admin Center > Billing > Licenses (Your products) > Export | Tenant license inventory: total/assigned/expired counts per SKU |
 | `AGENT_JOURNEY_MAP` | Maintained manually — see [Experience Model](#experience-model-xla) below | Agent → Journey → Persona dimension for XLA scoring |
+| `USAGE_AGENT_ID_OVERRIDES` | Maintained manually — see [Usage-to-Credit Agent ID Crosswalk](#usage-to-credit-agent-id-crosswalk) below | Forces `m365_usage_agents.resolved_agent_id` for ambiguous agent names |
 
 ---
 
@@ -155,6 +156,28 @@ Point `AGENT_JOURNEY_MAP` at the file in your `.env`. The `agent_id` must match 
 **XLA score formula:** `completion_rate × 0.6 + (100 − escalation_rate) × 0.2 + (100 − abandonment_rate) × 0.2`
 
 Scores ≥ 75 are green, 50–74 amber, < 50 red in the Excel sheet.
+
+---
+
+## Usage-to-Credit Agent ID Crosswalk
+
+`m365_usage_agents.agent_id` (from the M365 Admin usage report) is **not** the Copilot Studio bot GUID used everywhere else — `dim_agent.agent_id`, `m365_admin_agent_inventory.bot_id`, and `tokenomics_entitlement_per_agent.agent_id` all share that GUID, but the usage report has its own, unrelated ID scheme. The only bridge between usage volume (responses sent, active users) and credit consumption (billed/non-billed credits) is the agent's display name.
+
+On every sync, `m365_usage_agents.resolved_agent_id` is auto-populated by matching `agent_name` against `m365_admin_agent_inventory.name` — but **only** when that name maps to exactly one `bot_id`. In tenants with cloned agents (the same name published across dev/test/prod, or duplicated demo agents), a name can map to several different bot IDs, and auto-resolution deliberately leaves `resolved_agent_id` NULL rather than guessing wrong.
+
+To force a mapping for those ambiguous names:
+
+1. Run a sync, then check unresolved names: `store.fetch_m365_usage_agents_unresolved()` (or query `m365_usage_agents WHERE resolved_agent_id IS NULL` directly).
+2. Add a row per name to your override file:
+
+```csv
+agent_name,bot_id
+Software Provisioning Agent,73ef9d26-ac47-f111-bec6-00224805f648
+```
+
+3. Point `USAGE_AGENT_ID_OVERRIDES` at the file in your `.env` and re-run sync. Overrides always win over auto-resolution.
+
+Downstream joins between usage and credit data should key off `resolved_agent_id`, not `agent_name`.
 
 ---
 

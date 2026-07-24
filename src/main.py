@@ -411,6 +411,19 @@ def cmd_sync() -> str:
             except Exception as e:
                 print(f"  WARNING: {label} failed: {e}")
 
+    # ── Usage Agent ID overrides (crosswalk for ambiguous agent names) ───────
+    # Must load before the M365 Admin/Usage block below, since upsert_m365_usage_agents
+    # resolves resolved_agent_id against this table immediately after each upsert.
+    if settings.usage_agent_id_overrides:
+        print(f"\n[Usage Agent Overrides] importing from {settings.usage_agent_id_overrides}")
+        from src.fetchers.usage_agent_override_importer import UsageAgentOverrideImporter
+        overrides = UsageAgentOverrideImporter(settings.usage_agent_id_overrides).fetch_overrides()
+        if overrides:
+            written = store.upsert_usage_agent_id_overrides(overrides)
+            print(f"  {len(overrides)} rows, {written} written")
+        else:
+            print("  file not found or empty, skipped")
+
     # ── M365 Admin / Usage auto-import ───────────────────────────────────────
     if any([
         settings.m365_admin_agent_inventory,
