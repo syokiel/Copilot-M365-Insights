@@ -302,8 +302,22 @@ Daily active-user counts (and per-user flags) for M365 apps (Outlook, Word, Exce
 PowerPoint, OneNote, Teams) and platforms (Windows, Mac, Mobile, Web). CSV import.
 
 ### tokenomics_capacity_consumption / entitlement_consumption / entitlement_per_agent / entitlement_per_user
-Power Platform Admin credit/consumption data: daily resource burn, prepaid vs. PAYG per
-environment, and billed/non-billed credit per agent and per user.
+Power Platform Admin CREDIT consumption data (billed, not raw model usage): daily resource
+burn, prepaid vs. PAYG per environment, and billed/non-billed credit per agent and per user.
+- tokenomics_entitlement_per_agent: agent_id, agent_name, billed_credit, non_billed_credit
+- tokenomics_entitlement_consumption: environment_id, prepaid_consumed_quantity, payg_consumed_quantity
+- tokenomics_capacity_consumption: resource_name, feature_name, channel_id, consumption_date, consumed_quantity
+- tokenomics_entitlement_per_user: user_id, agent_id, credits_used, billable_credit_used
+
+### gen_ai_model_calls
+Raw LLM TOKEN usage per model call, from Application Insights — a different signal than
+tokenomics_* (which is billed credits, not tokens). A "consumption"/"usage" question should
+be answered with BOTH this table and the tokenomics_* tables above, not just one.
+- timestamp, gen_ai_agent_id, gen_ai_agent_name, conversation_id, session_id, user_id
+- gen_ai_request_model, gen_ai_response_model, gen_ai_provider_name
+- gen_ai_usage_input_tokens, gen_ai_usage_output_tokens
+- duration_ms, success, result_code
+NOTE: only populated once agents are configured to emit GenAI spans to App Insights.
 
 ### viva_person_insights
 Per-user weekly Viva Insights activity breakdown (Graph Analytics API).
@@ -414,7 +428,7 @@ async def list_tools() -> ListToolsResult:
     return ListToolsResult(tools=[
         Tool(
             name="get_kpi_snapshot",
-            description="Pre-aggregated KPI summary (conversations, active users, connector health, token usage). Call this first for overview questions.",
+            description="Pre-aggregated KPI summary (conversations, active users, connector health, license/agent adoption). Does NOT include token or credit consumption — use run_sql against gen_ai_model_calls / tokenomics_* for that. Call this first for overview questions.",
             inputSchema={"type": "object", "properties": {}, "required": []},
         ),
         Tool(

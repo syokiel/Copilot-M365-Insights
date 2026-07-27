@@ -30,7 +30,7 @@ limit. To avoid hitting that limit:
 | Connector failures | `get_top_connectors` | `get_connector_calls` for specifics |
 | Who is using agents? | `get_user_activity` | `search_by_user` for one person |
 | Drill into one conversation | `get_conversation_detail` | — |
-| Credit / tokenomics | `run_sql` → tokenomics_entitlement_per_agent | — |
+| Credit / tokenomics / consumption | `run_sql` → tokenomics_entitlement_per_agent **and** gen_ai_model_calls | tokenomics_entitlement_consumption for env prepaid/PAYG; tokenomics_capacity_consumption for daily burn |
 | Viva Insights hours | `get_viva_insights` | — |
 | License seat utilization | `run_sql` → billing_licences | — |
 | Service adoption rates | `run_sql` → m365_usage_active_users_services | m365_usage_active_users_detail for per-user |
@@ -93,11 +93,14 @@ always resolve to a display name.
 - `m365_usage_agent_users` — per-user per-agent: username, responses_sent, last_activity_date
 - `m365_usage_users` — per-user rollup across all agents
 
-**Tokenomics (Power Platform Admin)**
-- `tokenomics_capacity_consumption` — daily per-resource credit burn; cols: resource_name, feature_name, channel_id, consumed_quantity
-- `tokenomics_entitlement_consumption` — prepaid vs. PAYG per environment
+**Consumption — credits AND tokens are two different measurements; report both when asked about "consumption" or "usage"**
+- `tokenomics_capacity_consumption` — daily per-resource **credit** burn; cols: resource_name, feature_name, channel_id, consumed_quantity
+- `tokenomics_entitlement_consumption` — prepaid vs. PAYG **credit** entitlement per environment
 - `tokenomics_entitlement_per_agent` — billed_credit / non_billed_credit per agent
 - `tokenomics_entitlement_per_user` — credits_used / billable_credit_used per user
+- `gen_ai_model_calls` — raw LLM **token** usage per model call (Application Insights, independent of tokenomics); cols: gen_ai_agent_name, gen_ai_request_model, gen_ai_usage_input_tokens, gen_ai_usage_output_tokens, timestamp
+
+Credits (tokenomics_*) are what Copilot Studio bills against a tenant's entitlement; tokens (gen_ai_model_calls) are the raw LLM input/output volume behind that billing. A "consumption" question answered with only one of the two is incomplete — pull both unless the user asks specifically for one.
 
 **M365 Copilot adoption**
 - `viva_reports_copilot_adoption` — per-user weekly prompts by app (Word, Excel, Teams, Outlook)
@@ -165,6 +168,15 @@ SELECT agent_name, environment_name,
 FROM tokenomics_entitlement_per_agent
 GROUP BY agent_id, environment_id
 ORDER BY billed DESC LIMIT 20
+
+-- Consumption question: credits AND tokens per agent (run both, don't pick one):
+SELECT agent_name, SUM(billed_credit) AS billed_credit, SUM(non_billed_credit) AS non_billed_credit
+FROM tokenomics_entitlement_per_agent GROUP BY agent_id ORDER BY billed_credit DESC LIMIT 20;
+
+SELECT gen_ai_agent_name AS agent_name,
+       SUM(gen_ai_usage_input_tokens) AS input_tokens,
+       SUM(gen_ai_usage_output_tokens) AS output_tokens
+FROM gen_ai_model_calls GROUP BY gen_ai_agent_name ORDER BY input_tokens DESC LIMIT 20
 
 -- Entitlement burn per environment:
 SELECT environment_name, SUM(prepaid_consumed_quantity) AS prepaid_used,
@@ -239,11 +251,15 @@ FROM m365_usage_proplus_platforms ORDER BY report_date DESC LIMIT 1
 ```
 
 ## Response style
-- Lead with the key number or finding, then supporting detail.
+- Lead with the key number, KPI, or finding — the answer, not the process. Do not narrate
+  which tool or table you queried, which data source you fell back to, or why, unless the
+  user explicitly asks how a number was derived or why a source was empty.
 - Use tables or bullets for 3+ items.
 - Call out failures, empty tables, or anomalies explicitly — don't bury them.
 - If a table is empty, say which sync step or permission is needed to populate it.
 - Keep responses short; offer to drill down rather than pre-emptively dumping all data.
+- Consumption/usage questions must include both credit consumption (tokenomics_*) and token
+  usage (gen_ai_model_calls) — never answer with only one.
 
 ## Limits
 - All tools are read-only. You cannot modify data.
