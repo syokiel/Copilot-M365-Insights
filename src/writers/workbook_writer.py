@@ -103,14 +103,21 @@ def build_workbook(
     m365_usage_proplus_detail: list[dict] | None = None,
     billing_licences: list[dict] | None = None,
     exclude_sheets: set[str] | None = None,
+    include_sheets: set[str] | None = None,
 ) -> None:
     wb = openpyxl.Workbook()
     wb.remove(wb.active)
     exclude_sheets = exclude_sheets or set()
+    include_sheets = include_sheets or set()
+
+    def _allowed(name: str) -> bool:
+        if include_sheets and name not in include_sheets:
+            return False
+        return name not in exclude_sheets
 
     def _if(name: str, write_fn, *args):
         """Create the sheet only when at least one data arg is non-empty."""
-        if name in exclude_sheets:
+        if not _allowed(name):
             return
         has_data = any(
             (isinstance(a, (list, tuple)) and len(a) > 0) or
@@ -123,25 +130,27 @@ def build_workbook(
     latest_kpi = kpi_snapshots[0] if kpi_snapshots else None
 
     # Always-present sheets (summary / history depend on all data)
-    sheet_kpi_history.write(
-        wb.create_sheet("KPI History"),
-        kpi_snapshots or [],
-        entitlement=tokenomics_entitlement_consumption or [],
-        per_agent=tokenomics_entitlement_per_agent or [],
-        capacity=tokenomics_capacity_consumption or [],
-    )
-    sheet_summary.write(
-        wb.create_sheet("Copilot_Adoption_Summary"), events, connector_calls, model_calls or [],
-        kpi_snapshot=latest_kpi,
-        viva_reports_cs_sessions=viva_reports_cs_session_metrics or [],
-        viva_reports_cs_wau=viva_reports_cs_weekly_active_users or [],
-        viva_reports_cs_autonomous=viva_reports_cs_autonomous_metrics or [],
-        viva_reports_cs_agents=viva_reports_cs_copilot_agents or {},
-    )
+    if _allowed("KPI History"):
+        sheet_kpi_history.write(
+            wb.create_sheet("KPI History"),
+            kpi_snapshots or [],
+            entitlement=tokenomics_entitlement_consumption or [],
+            per_agent=tokenomics_entitlement_per_agent or [],
+            capacity=tokenomics_capacity_consumption or [],
+        )
+    if _allowed("Copilot_Adoption_Summary"):
+        sheet_summary.write(
+            wb.create_sheet("Copilot_Adoption_Summary"), events, connector_calls, model_calls or [],
+            kpi_snapshot=latest_kpi,
+            viva_reports_cs_sessions=viva_reports_cs_session_metrics or [],
+            viva_reports_cs_wau=viva_reports_cs_weekly_active_users or [],
+            viva_reports_cs_autonomous=viva_reports_cs_autonomous_metrics or [],
+            viva_reports_cs_agents=viva_reports_cs_copilot_agents or {},
+        )
 
     # XLA Scorecard — only when there's session data to compute from
     _xla_sess = viva_reports_cs_session_metrics or []
-    if _xla_sess:
+    if _xla_sess and _allowed("XLA_Measurements"):
         sheet_xla.write(
             wb.create_sheet("XLA_Measurements"),
             session_metrics=_xla_sess,
@@ -159,7 +168,7 @@ def build_workbook(
         tokenomics_entitlement_per_user or [],
         tokenomics_capacity_consumption or [],
     )
-    if any(_tok):
+    if any(_tok) and _allowed("Tokenomics_Summary"):
         sheet_tokenomics_summary.write(
             wb.create_sheet("Tokenomics_Summary"),
             entitlement=tokenomics_entitlement_consumption or [],
@@ -168,7 +177,7 @@ def build_workbook(
             capacity=tokenomics_capacity_consumption or [],
         )
 
-    if billing_licences:
+    if billing_licences and _allowed("M365_Licence_Optimization"):
         sheet_m365_licence_optimization.write(
             wb.create_sheet("M365_Licence_Optimization"),
             billing_licences=billing_licences or [],
@@ -178,7 +187,7 @@ def build_workbook(
             proplus_counts=m365_usage_proplus_counts or [],
         )
 
-    if m365_usage_active_users_detail and m365_usage_proplus_detail:
+    if m365_usage_active_users_detail and m365_usage_proplus_detail and _allowed("M365_F3_Candidates"):
         sheet_m365_f3_candidates.write(
             wb.create_sheet("M365_F3_Candidates"),
             active_users_detail=m365_usage_active_users_detail,

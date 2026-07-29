@@ -116,6 +116,10 @@ class Settings:
     # Comma-separated list of Excel sheet names to omit from the export
     # (must match the sheet name exactly, e.g. "M365_Copilot_Usage,Teams_Usage").
     exclude_sheets: set = None  # populated in __post_init__
+    # Comma-separated allowlist of Excel sheet names — when set, ONLY these
+    # sheets are written (takes precedence over exclude_sheets and overrides
+    # sheets that would otherwise always be written, e.g. "KPI History").
+    include_sheets: set = None  # populated in __post_init__
     # MCP server (HTTP deployment)
     mcp_tenant_id: str = ""
     mcp_app_id_uri: str = ""
@@ -217,6 +221,8 @@ class Settings:
 
         raw_exclude_sheets = os.getenv("EXCLUDE_SHEETS", "")
         self.exclude_sheets = {s.strip() for s in raw_exclude_sheets.split(",") if s.strip()}
+        raw_include_sheets = os.getenv("INCLUDE_SHEETS", "")
+        self.include_sheets = {s.strip() for s in raw_include_sheets.split(",") if s.strip()}
         self.mcp_tenant_id = os.getenv("MCP_TENANT_ID", self.mcp_tenant_id)
         self.mcp_app_id_uri = os.getenv("MCP_APP_ID_URI", self.mcp_app_id_uri)
         self.mcp_api_key = os.getenv("MCP_API_KEY", self.mcp_api_key)

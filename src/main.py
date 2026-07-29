@@ -682,6 +682,7 @@ def cmd_export(run_id: str) -> None:
         m365_usage_proplus_detail=m365_usage_proplus_detail,
         billing_licences=billing_licences,
         exclude_sheets=settings.exclude_sheets,
+        include_sheets=settings.include_sheets,
     )
 
 
