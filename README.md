@@ -34,30 +34,33 @@ Governance and telemetry reporting for Microsoft Copilot Studio agents across an
 
 ### CSV imports (manual export → local file → auto-imported on sync)
 
-| Env var | Where to export from | What it populates |
-|---|---|---|
-| `VIVA_REPROT_CS_DIR` | Viva Insights / M365 Copilot Admin > Copilot Studio agents report > Export folder | Session metrics, topics, WAU, autonomous metrics |
-| `VIVA_REPORT_ADOPTION` | Viva Insights > Copilot Adoption report > Export | Per-user weekly Copilot prompt counts by app |
-| `VIVA_REPORT_IMPACT` | Viva Insights > Copilot Impact report > Export | Per-user work-pattern signals alongside Copilot activity |
-| `M365ADMIN_AGENT_INVENTORY` | M365 Admin Center > Copilot > Agents > All agents > Export | Full agent registry with metadata, permissions, instructions |
-| `M365ADMIN_USAGE_REPORT_AGENTS` | M365 Admin > Reports > Usage > M365 Copilot > Agents > Export (Agents tab) | 30-day per-agent active users and responses |
-| `M365ADMIN_USAGE_REPORT_AGENTUSERS` | M365 Admin > Reports > Usage > M365 Copilot > Agents > Export (Users & Agents tab) | 30-day per-user per-agent activity |
-| `M365ADMIN_USAGE_REPORT_USERS` | M365 Admin > Reports > Usage > M365 Copilot > Agents > Export (Users tab) | 30-day per-user rollup (agents used, responses received) |
-| `PPADMIN_LICENSES_CS_CONSUMPTION_ENV` | Power Platform Admin > Licensing > Copilot Studio > Export > Entitlement Consumption (Tenant) | Per-environment prepaid vs PAYG credit burn |
-| `PPADMIN_LICENSES_CS_CONSUMPTION_AGENT` | Power Platform Admin > Licensing > Copilot Studio > Export > Entitlement Consumption (Per Agent) | Per-agent credit consumption by feature and channel |
-| `PPADMIN_LICENSES_CS_CONSUMPTION_USER` | Power Platform Admin > Licensing > Copilot Studio > Export > Entitlement Consumption (Per User) | Per-user credit consumption |
-| `PPADMIN_LICENSES_CS_CONSUMPTION_MANAGEAGENTS` | Power Platform Admin > Licensing > Copilot Studio > Manage Agents > Export | Daily capacity consumption by resource, feature, and channel |
-| `M365USAGE_ACTIVATIONS_USERS` | M365 Admin > Reports > Usage > Microsoft 365 Apps usage > Activations > Export | Per-user M365 Apps activation status by device type |
-| `M365USAGE_ACTIVE_USERS_SERVICES` | M365 Admin > Reports > Usage > Microsoft 365 Apps usage > Active Users > Services Export | Tenant-wide active vs. inactive user counts per service |
-| `M365USAGE_ACTIVE_USERS_ACTIVITY` | M365 Admin > Reports > Usage > Microsoft 365 Apps activity > Active Users > Activity Export | Daily/period activity counts per service |
-| `M365USAGE_ACTIVE_USERS_COUNTS` | M365 Admin > Reports > Usage > Active users - Office 365 > Active Users > Users Export | Tenant-wide active vs. inactive user counts per service |
-| `M365USAGE_ACTIVE_USERS_DETAIL` | M365 Admin > Reports > Usage > Microsoft 365 Apps usage > Active Users > Export | Per-user license/activity detail per service |
-| `M365USAGE_PROPLUS_PLATFORMS` | M365 Admin > Reports > Usage > Microsoft 365 Apps usage > Usage > Platforms Export | User counts by platform (Windows/Mac/mobile/web) |
-| `M365USAGE_PROPLUS_COUNTS` | M365 Admin > Reports > Usage > Microsoft 365 Apps usage > Usage > Users Export | User counts per M365 App (Outlook, Word, Excel, PowerPoint, OneNote, Teams) |
-| `M365USAGE_PROPLUS_DETAIL` | M365 Admin > Reports > Usage > Microsoft 365 Apps usage > Usage > Export | Per-user app/platform usage flags and last-activity dates |
-| `BILLING_LICENCES` | M365 Admin Center > Billing > Licenses (Your products) > Export | Tenant license inventory: total/assigned/expired counts per SKU |
-| `AGENT_JOURNEY_MAP` | Maintained manually — see [Experience Model](#experience-model-xla) below | Agent → Journey → Persona dimension for XLA scoring |
-| `USAGE_AGENT_ID_OVERRIDES` | Maintained manually — see [Usage-to-Credit Agent ID Crosswalk](#usage-to-credit-agent-id-crosswalk) below | Forces `m365_usage_agents.resolved_agent_id` for ambiguous agent names |
+| Env var | Where to export from | What it populates | Current Export Format |
+|---|---|---|---|
+| `VIVA_REPROT_CS_DIR` | Viva Insights / M365 Copilot Admin > Copilot Studio agents report > Export folder | Session metrics, topics, WAU, autonomous metrics | Folder: `AgentSessionMetrics.Csv`, `AgentTopicMetrics.Csv`, `AgentKnowledgeSourceMetrics.Csv`, `AgentAutonomousMetrics_*.Csv`, `AgentActionMetrics.Csv`, `CopilotAgent.Csv`, `AgentWeeklyActiveUsers.Csv`, `AgentExtendedMetadata.Csv` |
+| `VIVA_REPORT_ADOPTION` | Viva Insights > Copilot Adoption report > Export | Per-user weekly Copilot prompt counts by app | `Copilot Adoption Report_<Tenant>.Csv` |
+| `VIVA_REPORT_IMPACT` | Viva Insights > Copilot Impact report > Export | Per-user work-pattern signals alongside Copilot activity | `Copilot Impact_<Tenant>.Csv` |
+| `VIVA_REPORT_CONSUMPTION` | Viva Insights > Consumption > Export | Per-person Copilot credit consumption by service (enhances Tokenomics) | Folder: `PeopleMetaData.csv`, `PersonServiceCreditsMetrics.csv`, `SpendingPolicyMetadata.csv` |
+| `M365ADMIN_AGENT_INVENTORY` | M365 Admin Center > Copilot > Agents > All agents > Export | Full agent registry with metadata, permissions, instructions | `Agents_YYYY-MM-DD_HH_MM_SS.csv` |
+| `M365ADMIN_USAGE_REPORT_AGENTS` | M365 Admin > Reports > Usage > M365 Copilot > Agents > Export (Agents tab) | 30-day per-agent active users and responses | `DeclarativeAgents_Agents_30_YYYY-MM-DDTHH-MM-SS.csv` |
+| `M365ADMIN_USAGE_REPORT_AGENTUSERS` | M365 Admin > Reports > Usage > M365 Copilot > Agents > Export (Users & Agents tab) | 30-day per-user per-agent activity | `DeclarativeAgents_Users___agents_30_YYYY-MM-DDTHH-MM-SS.csv` |
+| `M365ADMIN_USAGE_REPORT_USERS` | M365 Admin > Reports > Usage > M365 Copilot > Agents > Export (Users tab) | 30-day per-user rollup (agents used, responses received) | `DeclarativeAgents_Users_30_YYYY-MM-DDTHH-MM-SS.csv` |
+| `M365ADMIN_COWORK_USAGE` | M365 Admin Center > Copilot > Cowork > Cowork Usage Details > Export | Per-user Cowork task activity | `CoworkUserDetails.csv` |
+| `M365ADMIN_USAGE_COPILOT` | M365 Admin > Reports > Usage > M365 Copilot > Copilot > Copilot Usage Details > Export | Per-user Copilot prompt/last-activity detail (merges into M365_Copilot_Usage) | `FastCopilotActivityUserDetailM_D_YYYY H_MM_SS PM.csv` |
+| `PPADMIN_LICENSES_CS_CONSUMPTION_ENV` | Power Platform Admin > Licensing > Copilot Studio > Export > Entitlement Consumption (Tenant) | Per-environment prepaid vs PAYG credit burn | `EntitlementConsumptionTenantDetailsReport_MCSMessages_180.csv` |
+| `PPADMIN_LICENSES_CS_CONSUMPTION_AGENT` | Power Platform Admin > Licensing > Copilot Studio > Export > Entitlement Consumption (Per Agent) | Per-agent credit consumption by feature and channel | `EntitlementConsumptionTenantPerAgentDetailsReport_MCSMessages_180.csv` |
+| `PPADMIN_LICENSES_CS_CONSUMPTION_USER` | Power Platform Admin > Licensing > Copilot Studio > Export > Entitlement Consumption (Per User) | Per-user credit consumption | `EntitlementConsumptionTenantPerUserDetailsReport_MCSMessages_180.csv` |
+| `PPADMIN_LICENSES_CS_CONSUMPTION_MANAGEAGENTS` | Power Platform Admin > Licensing > Copilot Studio > Manage Agents > Export | Daily capacity consumption by resource, feature, and channel | `CapacityConsumptionTenantDetailsReport.csv` |
+| `M365USAGE_ACTIVATIONS_USERS` | M365 Admin > Reports > Usage > Microsoft 365 Apps usage > Activations > Export | Per-user M365 Apps activation status by device type | `Office365ActivationsUserDetailM_D_YYYY H_MM_SS PM.csv` |
+| `M365USAGE_ACTIVE_USERS_SERVICES` | M365 Admin > Reports > Usage > Microsoft 365 Apps usage > Active Users > Services Export | Tenant-wide active vs. inactive user counts per service | `Office365ServicesUserCountsM_D_YYYY H_MM_SS PM.csv` |
+| `M365USAGE_ACTIVE_USERS_ACTIVITY` | M365 Admin > Reports > Usage > Microsoft 365 Apps activity > Active Users > Activity Export | Daily/period activity counts per service | `Office365ActiveUserActivityCountsM_D_YYYY H_MM_SS PM.csv` |
+| `M365USAGE_ACTIVE_USERS_COUNTS` | M365 Admin > Reports > Usage > Active users - Office 365 > Active Users > Users Export | Tenant-wide active vs. inactive user counts per service | `Office365ActiveUserCountsM_D_YYYY H_MM_SS PM.csv` |
+| `M365USAGE_ACTIVE_USERS_DETAIL` | M365 Admin > Reports > Usage > Microsoft 365 Apps usage > Active Users > Export | Per-user license/activity detail per service | `Office365ActiveUserDetailM_D_YYYY H_MM_SS PM.csv` |
+| `M365USAGE_PROPLUS_PLATFORMS` | M365 Admin > Reports > Usage > Microsoft 365 Apps usage > Usage > Platforms Export | User counts by platform (Windows/Mac/mobile/web) | `ProPlusUsagePlatformsUserCountsV2M_D_YYYY H_MM_SS PM.csv` |
+| `M365USAGE_PROPLUS_COUNTS` | M365 Admin > Reports > Usage > Microsoft 365 Apps usage > Usage > Users Export | User counts per M365 App (Outlook, Word, Excel, PowerPoint, OneNote, Teams) | `ProPlusUsageUserCountsV2M_D_YYYY H_MM_SS PM.csv` |
+| `M365USAGE_PROPLUS_DETAIL` | M365 Admin > Reports > Usage > Microsoft 365 Apps usage > Usage > Export | Per-user app/platform usage flags and last-activity dates | `ProPlusUsageUserDetailV2M_D_YYYY H_MM_SS PM.csv` |
+| `BILLING_LICENCES` | M365 Admin Center > Billing > Licenses (Your products) > Export | Tenant license inventory: total/assigned/expired counts per SKU | `ProductList_M_D_YYYY_H_MM_SS_AM/PM.csv` |
+| `AGENT_JOURNEY_MAP` | Maintained manually — see [Experience Model](#experience-model-xla) below | Agent → Journey → Persona dimension for XLA scoring | Manual CSV: `agent_id,agent_name,journey_name,persona_type` |
+| `USAGE_AGENT_ID_OVERRIDES` | Maintained manually — see [Usage-to-Credit Agent ID Crosswalk](#usage-to-credit-agent-id-crosswalk) below | Forces `m365_usage_agents.resolved_agent_id` for ambiguous agent names | Manual CSV: `agent_name,bot_id` |
 
 ---
 
@@ -66,6 +69,7 @@ Governance and telemetry reporting for Microsoft Copilot Studio agents across an
 | Sheet | Contents |
 |---|---|
 | **Summary** | Tenant-wide KPI snapshot |
+| **Cowork_Summary** | Cowork task activity and credit consumption dashboard |
 | **KPI History** | KPI trend over time |
 | **XLA_Measurements** | XLA scorecard computed from session metrics |
 | **XLA_Persona_Journey** | XLA scores aggregated by persona and journey (colour-coded) |
@@ -86,6 +90,7 @@ Governance and telemetry reporting for Microsoft Copilot Studio agents across an
 | **M365_Usage_Agents** | 30-day per-agent usage snapshot |
 | **M365_Usage_AgentUsers** | 30-day per-user per-agent activity |
 | **M365_Usage_Users** | 30-day per-user agent activity rollup |
+| **M365_Cowork_Usage** | Per-user Cowork task activity |
 | **M365_Activations** | Per-user M365 Apps activation status by device type |
 | **M365_Services_Counts** | Active/inactive user counts per service (Exchange, Teams, OneDrive, SharePoint, Yammer) |
 | **M365_Activity_Counts** | Daily activity counts per service |
@@ -103,10 +108,12 @@ Governance and telemetry reporting for Microsoft Copilot Studio agents across an
 | **Viva_CS_Autonomous** | Daily autonomous run summary |
 | **Viva_Copilot_Adoption** | Per-user weekly Copilot prompt counts by app |
 | **Viva_Copilot_Impact** | Per-user productivity signals alongside Copilot activity |
+| **Tokenomics_Summary** | Credit consumption dashboard: entitlement, burn rate, top agents/users, credits by service |
 | **Tokenomics_Capacity** | Daily capacity consumption by resource/feature/channel |
 | **Tokenomics_Entitlement** | Per-environment prepaid vs PAYG entitlement burn |
 | **Tokenomics_PerAgent** | Credit consumption broken down by agent |
 | **Tokenomics_PerUser** | Credit consumption broken down by user |
+| **Tokenomics_Consumption_Detail** | Per-person, per-service credit consumption (Viva Insights Consumption export) |
 | **AzureMonitor_Health** | Dependency failures and exceptions from Azure Monitor |
 | **CrossRef_Summary** | Conversations with correlated OTel + Azure Monitor failures |
 
@@ -222,12 +229,15 @@ cp config/.env.example .env
 VIVA_REPROT_CS_DIR=imports/June2026/CS+Agents+Report_YOKIEL
 VIVA_REPORT_ADOPTION=imports/June2026/Copilot Adoption Report_YOKIEL.Csv
 VIVA_REPORT_IMPACT=imports/June2026/Copilot Impact_YOKIEL.Csv
+VIVA_REPORT_CONSUMPTION=imports/June2026/ConsumptionDashboard-Weekly
 
 # M365 Admin Center
 M365ADMIN_AGENT_INVENTORY=imports/June2026/Agents_2026-06-12_16_10_35.csv
 M365ADMIN_USAGE_REPORT_AGENTS=imports/June2026/DeclarativeAgents_Agents_30_2026-06-12T16-09-57.csv
 M365ADMIN_USAGE_REPORT_AGENTUSERS=imports/June2026/DeclarativeAgents_Users___agents_30_2026-06-12T16-09-29.csv
 M365ADMIN_USAGE_REPORT_USERS=imports/June2026/DeclarativeAgents_Users_30_2026-06-18T18-11-03.csv
+M365ADMIN_COWORK_USAGE=imports/June2026/Usage_Reports/CoworkUserDetails.csv
+M365ADMIN_USAGE_COPILOT=imports/June2026/Usage_Reports/FastCopilotActivityUserDetail.csv
 
 # Power Platform Admin Center — Copilot credit consumption (Tokenomics_* tables)
 PPADMIN_LICENSES_CS_CONSUMPTION_ENV=imports/June2026/EntitlementConsumptionTenantDetailsReport_MCSMessages_180.csv

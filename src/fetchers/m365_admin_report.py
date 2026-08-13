@@ -9,6 +9,8 @@ Supported files (passed as direct file paths via config env vars):
   M365Admin.Reporting.Usage.Agents.Agents.*_Agents_*.csv    → m365_usage_agents
   M365Admin.Reporting.Usage.Agents.UsersAndAgents.*csv      → m365_usage_agent_users
   DeclarativeAgents_Users_30_*.csv                          → m365_usage_users
+  CoworkUserDetails*.csv                                    → m365_cowork_usage
+  FastCopilotActivityUserDetail*.csv                        → m365_copilot_usage (merged, CSV-only columns)
 """
 import csv
 import re
@@ -77,11 +79,15 @@ class M365AdminReportImporter:
         agents_path: str = "",
         agent_users_path: str = "",
         users_path: str = "",
+        cowork_usage_path: str = "",
+        usage_copilot_path: str = "",
     ) -> None:
-        self._inventory_path   = inventory_path
-        self._agents_path      = agents_path
-        self._agent_users_path = agent_users_path
-        self._users_path       = users_path
+        self._inventory_path    = inventory_path
+        self._agents_path       = agents_path
+        self._agent_users_path  = agent_users_path
+        self._users_path        = users_path
+        self._cowork_usage_path = cowork_usage_path
+        self._usage_copilot_path = usage_copilot_path
 
     def fetch_agent_inventory(self) -> list[dict]:
         out = []
@@ -162,5 +168,55 @@ class M365AdminReportImporter:
                 'agents_used':              _int(r.get('Number of agents used')),
                 'agent_responses_received': _int(r.get('Agent responses received')),
                 'last_activity_date':       _norm_date(r.get('Last activity date (UTC)', '')),
+            })
+        return out
+
+    def fetch_cowork_usage(self) -> list[dict]:
+        """Per-user Cowork task activity from the Cowork Usage Details export."""
+        out = []
+        for r in _read(self._cowork_usage_path):
+            out.append({
+                'user_principal_name':   r.get('UserPrincipalName', ''),
+                'display_name':          r.get('DisplayName', ''),
+                'total_tasks':           _int(r.get('TotalTasks')),
+                'scheduled_tasks':       _int(r.get('ScheduledTasks')),
+                'user_initiated_tasks':  _int(r.get('UserInitiatedTasks')),
+                'active_days':           _int(r.get('ActiveDays')),
+                'last_activity_date':    _norm_date(r.get('LastActivityDate', '')),
+            })
+        return out
+
+    def fetch_usage_copilot(self) -> list[dict]:
+        """Per-user M365 Copilot activity from the Copilot Usage Details export.
+
+        Complements the Graph-sourced fetch_copilot_usage() (per-app prompt
+        counts) with per-surface last-activity dates and Copilot Chat
+        work/web prompt splits. Merged into the same m365_copilot_usage
+        table/sheet via SqliteStore.upsert_m365_usage_copilot_detail, which
+        only touches these CSV-only columns.
+        """
+        out = []
+        for r in _read(self._usage_copilot_path):
+            out.append({
+                'user_principal_name':          r.get('User Principal Name', ''),
+                'display_name':                 r.get('Display Name', ''),
+                'last_activity_date':           _norm_date(r.get('Last Activity Date', '')),
+                'report_period':                r.get('Report Period', ''),
+                'report_refresh_date':          _norm_date(r.get('Report Refresh Date', '')),
+                'prompts_all_apps':             _int(r.get('Prompts submitted for All Apps')),
+                'prompts_copilot_chat_work':    _int(r.get('Prompts submitted for Copilot Chat (work)')),
+                'prompts_copilot_chat_web':     _int(r.get('Prompts submitted for Copilot Chat (web)')),
+                'active_usage_days_all_apps':   _int(r.get('Active Usage Days for All Apps')),
+                'last_activity_copilot_chat_work': _norm_date(r.get('Last activity date of Copilot Chat (work) (UTC)', '')),
+                'last_activity_copilot_chat_web':  _norm_date(r.get('Last activity date of Copilot Chat (web) (UTC)', '')),
+                'last_activity_teams_copilot':     _norm_date(r.get('Last activity date of Teams Copilot (UTC)', '')),
+                'last_activity_word_copilot':      _norm_date(r.get('Last activity date of Word Copilot (UTC)', '')),
+                'last_activity_excel_copilot':     _norm_date(r.get('Last activity date of Excel Copilot (UTC)', '')),
+                'last_activity_powerpoint_copilot': _norm_date(r.get('Last activity date of PowerPoint Copilot (UTC)', '')),
+                'last_activity_outlook_copilot':   _norm_date(r.get('Last activity date of Outlook Copilot (UTC)', '')),
+                'last_activity_onenote_copilot':   _norm_date(r.get('Last activity date of OneNote Copilot (UTC)', '')),
+                'last_activity_loop_copilot':      _norm_date(r.get('Last activity date of Loop Copilot (UTC)', '')),
+                'last_activity_m365_copilot_app':  _norm_date(r.get('Last activity date of Microsoft 365 Copilot (app) (UTC)', '')),
+                'last_activity_edge':              _norm_date(r.get('Last activity date of Edge (UTC)', '')),
             })
         return out

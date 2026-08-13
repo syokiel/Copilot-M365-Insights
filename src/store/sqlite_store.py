@@ -173,7 +173,25 @@ CREATE TABLE IF NOT EXISTS m365_copilot_usage (
     loop                INTEGER,
     copilot_chat        INTEGER,
     report_refresh_date TEXT,
-    report_period       TEXT
+    report_period       TEXT,
+    -- ── Optional columns from the M365ADMIN_USAGE_COPILOT CSV export ────────
+    -- (FastCopilotActivityUserDetail*.csv) — filled by upsert_m365_usage_copilot_detail,
+    -- which only ever touches these columns so Graph-sourced data above is untouched.
+    prompts_all_apps                   INTEGER,
+    prompts_copilot_chat_work          INTEGER,
+    prompts_copilot_chat_web           INTEGER,
+    active_usage_days_all_apps         INTEGER,
+    last_activity_copilot_chat_work    TEXT,
+    last_activity_copilot_chat_web     TEXT,
+    last_activity_teams_copilot        TEXT,
+    last_activity_word_copilot         TEXT,
+    last_activity_excel_copilot        TEXT,
+    last_activity_powerpoint_copilot   TEXT,
+    last_activity_outlook_copilot      TEXT,
+    last_activity_onenote_copilot      TEXT,
+    last_activity_loop_copilot         TEXT,
+    last_activity_m365_copilot_app     TEXT,
+    last_activity_edge                 TEXT
 );
 
 CREATE TABLE IF NOT EXISTS teams_usage (
@@ -758,6 +776,18 @@ CREATE TABLE IF NOT EXISTS m365_usage_users (
     last_activity_date       TEXT
 );
 
+-- ── M365 Admin Center — Cowork Usage (CSV import) ────────────────────────
+
+CREATE TABLE IF NOT EXISTS m365_cowork_usage (
+    user_principal_name  TEXT PRIMARY KEY,
+    -- display_name moved to dim_user; fetch_m365_cowork_usage() joins it back in
+    total_tasks           INTEGER,
+    scheduled_tasks       INTEGER,
+    user_initiated_tasks  INTEGER,
+    active_days           INTEGER,
+    last_activity_date    TEXT
+);
+
 -- ── Tokenomics — Copilot Credit Consumption (Power Platform Admin) ───────
 
 CREATE TABLE IF NOT EXISTS tokenomics_capacity_consumption (
@@ -826,6 +856,43 @@ CREATE TABLE IF NOT EXISTS tokenomics_entitlement_per_user (
 CREATE INDEX IF NOT EXISTS idx_tokenomics_per_agent_agent ON tokenomics_entitlement_per_agent(agent_id);
 CREATE INDEX IF NOT EXISTS idx_tokenomics_per_agent_env   ON tokenomics_entitlement_per_agent(environment_id);
 CREATE INDEX IF NOT EXISTS idx_tokenomics_per_user_user   ON tokenomics_entitlement_per_user(user_id);
+
+-- ── Viva Insights — Consumption Dashboard (per-person credit use by service) ─
+-- Enhances the Tokenomics_* sheets with a service-level (Cowork, Copilot
+-- Studio, etc.) breakdown that the PP Admin entitlement/capacity reports
+-- above don't carry.
+
+CREATE TABLE IF NOT EXISTS viva_consumption_people (
+    people_historical_id TEXT PRIMARY KEY,
+    organization          TEXT,
+    function_type         TEXT,
+    is_copilot_licensed   INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS viva_consumption_person_service_credits (
+    person_id             TEXT NOT NULL,
+    service_id            TEXT NOT NULL,
+    service_name          TEXT,
+    spending_policy_id    TEXT,
+    metric_date           TEXT NOT NULL,
+    session_count         INTEGER,
+    spending_policy_limit REAL,
+    total_credits_used    REAL,
+    user_limit            REAL,
+    people_historical_id  TEXT,
+    PRIMARY KEY (person_id, service_id, metric_date)
+);
+
+CREATE TABLE IF NOT EXISTS viva_consumption_spending_policy (
+    spending_policy_id TEXT PRIMARY KEY,
+    name                TEXT,
+    plan_limit          REAL,
+    user_limit          REAL,
+    included_services   TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_viva_consumption_credits_service ON viva_consumption_person_service_credits(service_name);
+CREATE INDEX IF NOT EXISTS idx_viva_consumption_credits_people  ON viva_consumption_person_service_credits(people_historical_id);
 
 -- ── M365 Admin Center — Office 365 / M365 Apps Usage Reports (CSV import) ─
 
@@ -2080,19 +2147,97 @@ class SqliteStore:
         )
 
     def upsert_copilot_usage(self, rows: list[dict]) -> int:
+        # Explicit column list + ON CONFLICT DO UPDATE (not a blind REPLACE) so this
+        # never clobbers the optional CSV-sourced columns written by
+        # upsert_m365_usage_copilot_detail for the same user.
         written = 0
         with self._conn:
             for r in rows:
                 self._upsert_dim_user(r["user_principal_name"], r.get("display_name"))
                 cur = self._conn.execute(
-                    """INSERT OR REPLACE INTO m365_copilot_usage VALUES
-                    (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    """INSERT INTO m365_copilot_usage (
+                        user_principal_name, last_activity_date, teams_chats, teams_meetings,
+                        word, excel, powerpoint, outlook, onenote, loop, copilot_chat,
+                        report_refresh_date, report_period
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    ON CONFLICT(user_principal_name) DO UPDATE SET
+                        last_activity_date  = excluded.last_activity_date,
+                        teams_chats         = excluded.teams_chats,
+                        teams_meetings      = excluded.teams_meetings,
+                        word                = excluded.word,
+                        excel               = excluded.excel,
+                        powerpoint          = excluded.powerpoint,
+                        outlook             = excluded.outlook,
+                        onenote             = excluded.onenote,
+                        loop                = excluded.loop,
+                        copilot_chat        = excluded.copilot_chat,
+                        report_refresh_date = excluded.report_refresh_date,
+                        report_period       = excluded.report_period
+                    """,
                     (r["user_principal_name"],
                      r.get("last_activity_date", ""), r.get("teams_chats"),
                      r.get("teams_meetings"), r.get("word"), r.get("excel"),
                      r.get("powerpoint"), r.get("outlook"), r.get("onenote"),
                      r.get("loop"), r.get("copilot_chat"),
                      r.get("report_refresh_date", ""), r.get("report_period", "")),
+                )
+                written += cur.rowcount
+        return written
+
+    def upsert_m365_usage_copilot_detail(self, rows: list[dict]) -> int:
+        """Merges FastCopilotActivityUserDetail CSV rows (M365ADMIN_USAGE_COPILOT)
+        into m365_copilot_usage. Only ever writes the CSV-only columns (plus
+        filling last_activity_date/report_period/report_refresh_date when Graph
+        hasn't already set them) — never overwrites the Graph-sourced columns
+        written by upsert_copilot_usage.
+        """
+        written = 0
+        with self._conn:
+            for r in rows:
+                self._upsert_dim_user(r["user_principal_name"], r.get("display_name"))
+                cur = self._conn.execute(
+                    """INSERT INTO m365_copilot_usage (
+                        user_principal_name, last_activity_date, report_refresh_date, report_period,
+                        prompts_all_apps, prompts_copilot_chat_work, prompts_copilot_chat_web,
+                        active_usage_days_all_apps, last_activity_copilot_chat_work,
+                        last_activity_copilot_chat_web, last_activity_teams_copilot,
+                        last_activity_word_copilot, last_activity_excel_copilot,
+                        last_activity_powerpoint_copilot, last_activity_outlook_copilot,
+                        last_activity_onenote_copilot, last_activity_loop_copilot,
+                        last_activity_m365_copilot_app, last_activity_edge
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    ON CONFLICT(user_principal_name) DO UPDATE SET
+                        last_activity_date  = COALESCE(m365_copilot_usage.last_activity_date, excluded.last_activity_date),
+                        report_refresh_date = COALESCE(m365_copilot_usage.report_refresh_date, excluded.report_refresh_date),
+                        report_period       = COALESCE(m365_copilot_usage.report_period, excluded.report_period),
+                        prompts_all_apps                 = excluded.prompts_all_apps,
+                        prompts_copilot_chat_work        = excluded.prompts_copilot_chat_work,
+                        prompts_copilot_chat_web         = excluded.prompts_copilot_chat_web,
+                        active_usage_days_all_apps       = excluded.active_usage_days_all_apps,
+                        last_activity_copilot_chat_work  = excluded.last_activity_copilot_chat_work,
+                        last_activity_copilot_chat_web   = excluded.last_activity_copilot_chat_web,
+                        last_activity_teams_copilot      = excluded.last_activity_teams_copilot,
+                        last_activity_word_copilot       = excluded.last_activity_word_copilot,
+                        last_activity_excel_copilot      = excluded.last_activity_excel_copilot,
+                        last_activity_powerpoint_copilot = excluded.last_activity_powerpoint_copilot,
+                        last_activity_outlook_copilot    = excluded.last_activity_outlook_copilot,
+                        last_activity_onenote_copilot    = excluded.last_activity_onenote_copilot,
+                        last_activity_loop_copilot       = excluded.last_activity_loop_copilot,
+                        last_activity_m365_copilot_app   = excluded.last_activity_m365_copilot_app,
+                        last_activity_edge               = excluded.last_activity_edge
+                    """,
+                    (
+                        r["user_principal_name"], r.get("last_activity_date", ""),
+                        r.get("report_refresh_date", ""), r.get("report_period", ""),
+                        r.get("prompts_all_apps"), r.get("prompts_copilot_chat_work"),
+                        r.get("prompts_copilot_chat_web"), r.get("active_usage_days_all_apps"),
+                        r.get("last_activity_copilot_chat_work", ""), r.get("last_activity_copilot_chat_web", ""),
+                        r.get("last_activity_teams_copilot", ""), r.get("last_activity_word_copilot", ""),
+                        r.get("last_activity_excel_copilot", ""), r.get("last_activity_powerpoint_copilot", ""),
+                        r.get("last_activity_outlook_copilot", ""), r.get("last_activity_onenote_copilot", ""),
+                        r.get("last_activity_loop_copilot", ""), r.get("last_activity_m365_copilot_app", ""),
+                        r.get("last_activity_edge", ""),
+                    ),
                 )
                 written += cur.rowcount
         return written
@@ -2984,6 +3129,33 @@ class SqliteStore:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    def upsert_m365_cowork_usage(self, rows: list[dict]) -> int:
+        written = 0
+        with self._conn:
+            for r in rows:
+                self._upsert_dim_user(r.get('user_principal_name'), r.get('display_name'))
+                cur = self._conn.execute(
+                    """INSERT OR REPLACE INTO m365_cowork_usage VALUES (?,?,?,?,?,?)""",
+                    (
+                        r.get('user_principal_name'), r.get('total_tasks'),
+                        r.get('scheduled_tasks'), r.get('user_initiated_tasks'),
+                        r.get('active_days'), r.get('last_activity_date'),
+                    ),
+                )
+                written += cur.rowcount
+        return written
+
+    def fetch_m365_cowork_usage(self) -> list[dict]:
+        rows = self._conn.execute(
+            """
+            SELECT m.*, u.display_name
+            FROM m365_cowork_usage m
+            LEFT JOIN dim_user u ON u.user_principal_name = m.user_principal_name
+            ORDER BY m.total_tasks DESC
+            """
+        ).fetchall()
+        return [dict(r) for r in rows]
+
     def upsert_tokenomics_entitlement_per_agent(self, rows: list[dict]) -> int:
         written = 0
         with self._conn:
@@ -3028,6 +3200,69 @@ class SqliteStore:
     def fetch_tokenomics_entitlement_per_user(self) -> list[dict]:
         rows = self._conn.execute(
             "SELECT * FROM tokenomics_entitlement_per_user ORDER BY credits_used DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    # ── Viva Insights — Consumption Dashboard ────────────────────────────
+
+    def upsert_viva_consumption_people(self, rows: list[dict]) -> int:
+        written = 0
+        with self._conn:
+            for r in rows:
+                cur = self._conn.execute(
+                    """INSERT OR REPLACE INTO viva_consumption_people VALUES (?,?,?,?)""",
+                    (
+                        r.get('people_historical_id'), r.get('organization'),
+                        r.get('function_type'), r.get('is_copilot_licensed'),
+                    ),
+                )
+                written += cur.rowcount
+        return written
+
+    def upsert_viva_consumption_person_service_credits(self, rows: list[dict]) -> int:
+        written = 0
+        with self._conn:
+            for r in rows:
+                cur = self._conn.execute(
+                    """INSERT OR REPLACE INTO viva_consumption_person_service_credits VALUES
+                    (?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        r.get('person_id'), r.get('service_id'), r.get('service_name'),
+                        r.get('spending_policy_id'), r.get('metric_date'),
+                        r.get('session_count'), r.get('spending_policy_limit'),
+                        r.get('total_credits_used'), r.get('user_limit'),
+                        r.get('people_historical_id'),
+                    ),
+                )
+                written += cur.rowcount
+        return written
+
+    def upsert_viva_consumption_spending_policy(self, rows: list[dict]) -> int:
+        written = 0
+        with self._conn:
+            for r in rows:
+                cur = self._conn.execute(
+                    """INSERT OR REPLACE INTO viva_consumption_spending_policy VALUES (?,?,?,?,?)""",
+                    (
+                        r.get('spending_policy_id'), r.get('name'),
+                        r.get('plan_limit'), r.get('user_limit'), r.get('included_services'),
+                    ),
+                )
+                written += cur.rowcount
+        return written
+
+    def fetch_viva_consumption_detail(self) -> list[dict]:
+        """Person/service/date credit rows joined with org/function context.
+        Feeds both the Tokenomics_Consumption_Detail sheet and the
+        'Credits by Service' section of Tokenomics_Summary.
+        """
+        rows = self._conn.execute(
+            """
+            SELECT c.*, p.organization, p.function_type, p.is_copilot_licensed
+            FROM viva_consumption_person_service_credits c
+            LEFT JOIN viva_consumption_people p ON p.people_historical_id = c.people_historical_id
+            ORDER BY c.total_credits_used DESC
+            """
         ).fetchall()
         return [dict(r) for r in rows]
 

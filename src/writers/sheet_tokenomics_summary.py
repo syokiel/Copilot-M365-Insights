@@ -17,7 +17,9 @@ def write(
     per_agent: list[dict],
     per_user: list[dict],
     capacity: list[dict],
+    consumption_by_service: list[dict] | None = None,
 ) -> None:
+    consumption_by_service = consumption_by_service or []
 
     # ── Aggregates: entitlement ───────────────────────────────────────────────
     total_entitled  = sum(r.get("entitled_quantity")          or 0 for r in entitlement)
@@ -50,6 +52,13 @@ def write(
     peak_day   = max(daily, key=daily.get) if daily else None
     peak_qty   = round(daily[peak_day], 1) if peak_day else 0.0
     days_left  = round(remaining / avg_daily) if avg_daily and remaining else None
+
+    # ── Aggregates: Viva Consumption credits by service ───────────────────────
+    service_credits: dict[str, float] = defaultdict(float)
+    for r in consumption_by_service:
+        service_credits[r.get("service_name") or "Unknown"] += r.get("total_credits_used") or 0
+    top_services = sorted(service_credits.items(), key=lambda x: x[1], reverse=True)
+    consumption_people = {r.get("people_historical_id") for r in consumption_by_service if r.get("people_historical_id")}
 
     # ── Aggregates: per-agent credits ─────────────────────────────────────────
     agent_credits: dict[str, float] = defaultdict(float)
@@ -153,6 +162,16 @@ def write(
         ("Peak single-day consumption",     f"{_fmt(peak_qty)}  ({peak_day or '—'})"),
         ("Estimated days of prepaid left",  str(days_left) if days_left is not None else "—"),
     ]
+
+    # ── Section 2.5: Credits by service (Viva Consumption) ────────────────────
+    if top_services:
+        rows += [
+            (None, None),
+            ("── Credits by Service (Viva Consumption) ────────", None),
+            ("People consuming credits (Viva Consumption)", str(len(consumption_people))),
+        ]
+        for service, total in top_services:
+            rows.append((f"  {service}", _fmt(total)))
 
     # ── Section 3: Credit breakdown by agent ─────────────────────────────────
     rows += [

@@ -79,6 +79,7 @@ class Settings:
     # Optional: total Copilot license count for activation rate KPI.
     # Not derivable from usage data — set from your admin centre licence count.
     total_licenses: int = 0
+    # ── Viva Insights CSV exports ────────────────────────────────────────────
     # Viva CS (Copilot Studio) analytics CSV export folder.
     # Set VIVA_REPORT_CS_DIR (or VIVA_REPROT_CS_DIR) to the folder containing
     # the agent CSV exports — imported automatically on every sync/all run.
@@ -86,23 +87,27 @@ class Settings:
     # Direct file paths for Copilot Adoption and Impact reports.
     viva_report_adoption: str = ""
     viva_report_impact: str = ""
-    # Agent → Journey → Persona mapping (static CSV seed for XLA experience model)
-    agent_journey_map: str = ""
-    # Usage-agent-name -> Copilot Studio bot GUID override (static CSV; resolves
-    # m365_usage_agents.agent_name where auto-resolution is ambiguous)
-    usage_agent_id_overrides: str = ""
-    # M365 Admin Center CSV exports
+    # Viva Insights > Consumption > Export folder — per-person Copilot credit
+    # consumption by service (PeopleMetaData.csv, PersonServiceCreditsMetrics.csv,
+    # SpendingPolicyMetadata.csv). Feeds/enhances the Tokenomics_* sheets.
+    viva_report_consumption: str = ""
+    # ── M365 Admin Center CSV exports ────────────────────────────────────────
     m365_admin_agent_inventory: str = ""
     # M365 Usage reports
     m365_usage_report_agents: str = ""
     m365_usage_report_agent_users: str = ""
     m365_usage_report_users: str = ""
-    # Power Platform Admin Center — Copilot credit consumption CSV exports (Tokenomics_* tables)
+    # M365 Admin Center > Copilot > Cowork > Cowork Usage Details export
+    m365_admin_cowork_usage: str = ""
+    # M365 Admin > Reports > Usage > M365 Copilot > Copilot > Copilot Usage Details
+    # export — merges into the Graph-sourced M365_Copilot_Usage sheet/table.
+    m365_usage_report_copilot: str = ""
+    # ── Power Platform Admin Center — Copilot credit consumption CSV exports (Tokenomics_* tables)
     ppadmin_licenses_cs_consumption_manageagents: str = ""
     ppadmin_licenses_cs_consumption_env: str = ""
     ppadmin_licenses_cs_consumption_agent: str = ""
     ppadmin_licenses_cs_consumption_user: str = ""
-    # M365 Admin Center — Office 365 / Microsoft 365 Apps usage CSV exports
+    # ── M365 Admin Center — Office 365 / Microsoft 365 Apps usage CSV exports
     m365_usage_activations_users: str = ""
     m365_usage_active_users_services: str = ""
     m365_usage_active_users_activity: str = ""
@@ -113,6 +118,12 @@ class Settings:
     m365_usage_proplus_detail: str = ""
     # License inventory (M365 Admin Center → Billing → Licenses → Export)
     billing_licences: str = ""
+    # ── Manually-maintained crosswalk files (not portal exports) ────────────
+    # Agent → Journey → Persona mapping (static CSV seed for XLA experience model)
+    agent_journey_map: str = ""
+    # Usage-agent-name -> Copilot Studio bot GUID override (static CSV; resolves
+    # m365_usage_agents.agent_name where auto-resolution is ambiguous)
+    usage_agent_id_overrides: str = ""
     # Comma-separated list of Excel sheet names to omit from the export
     # (must match the sheet name exactly, e.g. "M365_Copilot_Usage,Teams_Usage").
     exclude_sheets: set = None  # populated in __post_init__
@@ -163,9 +174,8 @@ class Settings:
         ).strip()
         self.viva_report_adoption = os.getenv("VIVA_REPORT_ADOPTION", self.viva_report_adoption).strip()
         self.viva_report_impact   = os.getenv("VIVA_REPORT_IMPACT",   self.viva_report_impact).strip()
-        self.agent_journey_map = os.getenv("AGENT_JOURNEY_MAP", self.agent_journey_map).strip()
-        self.usage_agent_id_overrides = os.getenv(
-            "USAGE_AGENT_ID_OVERRIDES", self.usage_agent_id_overrides
+        self.viva_report_consumption = os.getenv(
+            "VIVA_REPORT_CONSUMPTION", self.viva_report_consumption
         ).strip()
         self.m365_admin_agent_inventory   = os.getenv("M365ADMIN_AGENT_INVENTORY",   self.m365_admin_agent_inventory).strip()
         self.m365_usage_report_agents     = (
@@ -180,6 +190,12 @@ class Settings:
         ).strip()
         self.m365_usage_report_users = os.getenv(
             "M365ADMIN_USAGE_REPORT_USERS", self.m365_usage_report_users
+        ).strip()
+        self.m365_admin_cowork_usage = os.getenv(
+            "M365ADMIN_COWORK_USAGE", self.m365_admin_cowork_usage
+        ).strip()
+        self.m365_usage_report_copilot = os.getenv(
+            "M365ADMIN_USAGE_COPILOT", self.m365_usage_report_copilot
         ).strip()
         self.ppadmin_licenses_cs_consumption_manageagents = (
             os.getenv("PPADMIN_LICENSES_CS_CONSUMPTION_MANAGEAGENTS") or
@@ -204,11 +220,16 @@ class Settings:
         self.m365_usage_proplus_counts       = os.getenv("M365USAGE_PROPLUS_COUNTS",       self.m365_usage_proplus_counts).strip()
         self.m365_usage_proplus_detail       = os.getenv("M365USAGE_PROPLUS_DETAIL",       self.m365_usage_proplus_detail).strip()
         self.billing_licences                = os.getenv("BILLING_LICENCES",               self.billing_licences).strip()
+        self.agent_journey_map = os.getenv("AGENT_JOURNEY_MAP", self.agent_journey_map).strip()
+        self.usage_agent_id_overrides = os.getenv(
+            "USAGE_AGENT_ID_OVERRIDES", self.usage_agent_id_overrides
+        ).strip()
 
         for _field in (
             "viva_report_adoption", "viva_report_impact",
             "m365_admin_agent_inventory",
             "m365_usage_report_agents", "m365_usage_report_agent_users", "m365_usage_report_users",
+            "m365_admin_cowork_usage", "m365_usage_report_copilot",
             "ppadmin_licenses_cs_consumption_manageagents", "ppadmin_licenses_cs_consumption_env",
             "ppadmin_licenses_cs_consumption_agent", "ppadmin_licenses_cs_consumption_user",
             "m365_usage_activations_users", "m365_usage_active_users_services",

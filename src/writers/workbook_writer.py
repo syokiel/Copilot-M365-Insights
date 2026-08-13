@@ -7,6 +7,7 @@ from src.writers import (
     sheet_ai_usage,
     sheet_az_health,
     sheet_connectors,
+    sheet_cowork_summary,
     sheet_crossref,
     sheet_dlp,
     sheet_environments,
@@ -15,6 +16,7 @@ from src.writers import (
     sheet_m365_admin_inventory,
     sheet_m365_copilot,
     sheet_m365_copilot_trend,
+    sheet_m365_cowork_usage,
     sheet_m365_packages,
     sheet_m365_o365_users,
     sheet_m365_app_users,
@@ -25,6 +27,7 @@ from src.writers import (
     sheet_summary,
     sheet_teams_usage,
     sheet_tokenomics_capacity,
+    sheet_tokenomics_consumption,
     sheet_tokenomics_entitlement,
     sheet_tokenomics_entitlement_per_agent,
     sheet_tokenomics_entitlement_per_user,
@@ -86,6 +89,8 @@ def build_workbook(
     m365_usage_agents: list[dict] | None = None,
     m365_usage_agent_users: list[dict] | None = None,
     m365_usage_users: list[dict] | None = None,
+    m365_cowork_usage: list[dict] | None = None,
+    viva_consumption_detail: list[dict] | None = None,
     viva_reports_cs_action_metrics: list[dict] | None = None,
     tokenomics_capacity_consumption: list[dict] | None = None,
     tokenomics_entitlement_consumption: list[dict] | None = None,
@@ -148,6 +153,13 @@ def build_workbook(
             viva_reports_cs_agents=viva_reports_cs_copilot_agents or {},
         )
 
+    if (m365_cowork_usage or viva_consumption_detail) and _allowed("Cowork_Summary"):
+        sheet_cowork_summary.write(
+            wb.create_sheet("Cowork_Summary"),
+            cowork_usage=m365_cowork_usage or [],
+            consumption_by_service=viva_consumption_detail or [],
+        )
+
     # XLA Scorecard — only when there's session data to compute from
     _xla_sess = viva_reports_cs_session_metrics or []
     if _xla_sess and _allowed("XLA_Measurements"):
@@ -167,6 +179,7 @@ def build_workbook(
         tokenomics_entitlement_per_agent or [],
         tokenomics_entitlement_per_user or [],
         tokenomics_capacity_consumption or [],
+        viva_consumption_detail or [],
     )
     if any(_tok) and _allowed("Tokenomics_Summary"):
         sheet_tokenomics_summary.write(
@@ -175,6 +188,7 @@ def build_workbook(
             per_agent=tokenomics_entitlement_per_agent or [],
             per_user=tokenomics_entitlement_per_user or [],
             capacity=tokenomics_capacity_consumption or [],
+            consumption_by_service=viva_consumption_detail or [],
         )
 
     if billing_licences and _allowed("M365_Licence_Optimization"):
@@ -218,10 +232,12 @@ def build_workbook(
     _if("M365_Usage_Agents",     sheet_m365_usage_agents.write,    m365_usage_agents or [])
     _if("M365_Usage_AgentUsers", sheet_m365_usage_agent_users.write, m365_usage_agent_users or [])
     _if("M365_Usage_Users",      sheet_m365_usage_users.write,     m365_usage_users or [])
+    _if("M365_Cowork_Usage",     sheet_m365_cowork_usage.write,    m365_cowork_usage or [])
     _if("Tokenomics_Capacity",    sheet_tokenomics_capacity.write,    tokenomics_capacity_consumption or [])
     _if("Tokenomics_Entitlement", sheet_tokenomics_entitlement.write, tokenomics_entitlement_consumption or [])
     _if("Tokenomics_PerAgent",    sheet_tokenomics_entitlement_per_agent.write, tokenomics_entitlement_per_agent or [])
     _if("Tokenomics_PerUser",     sheet_tokenomics_entitlement_per_user.write,  tokenomics_entitlement_per_user or [])
+    _if("Tokenomics_Consumption_Detail", sheet_tokenomics_consumption.write, viva_consumption_detail or [])
     _if("XLA_Persona_Journey",    sheet_xla_persona_journey.write,    xla_by_persona_journey or [])
     _if("XLA_Agent_Contribution", sheet_xla_agent_contribution.write, xla_agent_contribution or [])
     _if("M365_Activations",        sheet_m365_activations.write,         m365_usage_activations_users or [])

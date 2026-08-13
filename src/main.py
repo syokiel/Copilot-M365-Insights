@@ -411,6 +411,26 @@ def cmd_sync() -> str:
             except Exception as e:
                 print(f"  WARNING: {label} failed: {e}")
 
+    # ── Viva Consumption auto-import (enhances Tokenomics_* sheets) ─────────
+    if settings.viva_report_consumption:
+        print(f"\n[Viva Consumption] importing from {settings.viva_report_consumption}")
+        from src.fetchers.viva_consumption_report import VivaConsumptionImporter
+        vconsumption = VivaConsumptionImporter(settings.viva_report_consumption)
+        for label, fetch_fn, upsert_fn in [
+            ("people",                vconsumption.fetch_people,                store.upsert_viva_consumption_people),
+            ("person-service credits", vconsumption.fetch_person_service_credits, store.upsert_viva_consumption_person_service_credits),
+            ("spending policy",       vconsumption.fetch_spending_policy,       store.upsert_viva_consumption_spending_policy),
+        ]:
+            try:
+                items = fetch_fn()
+                if items:
+                    written = upsert_fn(items)
+                    print(f"  {label}: {len(items)} rows, {written} written")
+                else:
+                    print(f"  {label}: file not found, skipped")
+            except Exception as e:
+                print(f"  WARNING: {label} failed: {e}")
+
     # ── Usage Agent ID overrides (crosswalk for ambiguous agent names) ───────
     # Must load before the M365 Admin/Usage block below, since upsert_m365_usage_agents
     # resolves resolved_agent_id against this table immediately after each upsert.
@@ -430,6 +450,8 @@ def cmd_sync() -> str:
         settings.m365_usage_report_agents,
         settings.m365_usage_report_agent_users,
         settings.m365_usage_report_users,
+        settings.m365_admin_cowork_usage,
+        settings.m365_usage_report_copilot,
     ]):
         print("\n[M365 Admin/Usage] importing CSV reports")
         from src.fetchers.m365_admin_report import M365AdminReportImporter
@@ -438,12 +460,16 @@ def cmd_sync() -> str:
             agents_path=settings.m365_usage_report_agents,
             agent_users_path=settings.m365_usage_report_agent_users,
             users_path=settings.m365_usage_report_users,
+            cowork_usage_path=settings.m365_admin_cowork_usage,
+            usage_copilot_path=settings.m365_usage_report_copilot,
         )
         for label, fetch_fn, upsert_fn in [
             ("agent inventory",   m365.fetch_agent_inventory,   store.upsert_m365_admin_agent_inventory),
             ("usage agents",      m365.fetch_usage_agents,       store.upsert_m365_usage_agents),
             ("usage agent users", m365.fetch_usage_agent_users,  store.upsert_m365_usage_agent_users),
             ("usage users",       m365.fetch_usage_users,        store.upsert_m365_usage_users),
+            ("cowork usage",      m365.fetch_cowork_usage,       store.upsert_m365_cowork_usage),
+            ("usage copilot detail", m365.fetch_usage_copilot,   store.upsert_m365_usage_copilot_detail),
         ]:
             try:
                 items = fetch_fn()
@@ -591,6 +617,8 @@ def cmd_export(run_id: str) -> None:
     m365_usage_agents                   = store.fetch_m365_usage_agents()
     m365_usage_agent_users              = store.fetch_m365_usage_agent_users()
     m365_usage_users                    = store.fetch_m365_usage_users()
+    m365_cowork_usage                   = store.fetch_m365_cowork_usage()
+    viva_consumption_detail             = store.fetch_viva_consumption_detail()
     viva_reports_cs_action_metrics      = store.fetch_viva_reports_cs_action_metrics()
     tokenomics_capacity_consumption     = store.fetch_tokenomics_capacity_consumption()
     tokenomics_entitlement_consumption  = store.fetch_tokenomics_entitlement_consumption()
@@ -665,6 +693,8 @@ def cmd_export(run_id: str) -> None:
         m365_usage_agents=m365_usage_agents,
         m365_usage_agent_users=m365_usage_agent_users,
         m365_usage_users=m365_usage_users,
+        m365_cowork_usage=m365_cowork_usage,
+        viva_consumption_detail=viva_consumption_detail,
         viva_reports_cs_action_metrics=viva_reports_cs_action_metrics,
         tokenomics_capacity_consumption=tokenomics_capacity_consumption,
         tokenomics_entitlement_consumption=tokenomics_entitlement_consumption,
