@@ -1,9 +1,13 @@
 {
   "mcpServers": {
     "agent-telemetry": {
-      "command": "/Users/yokiel/GITHUB/Copilot-Insights/.venv/bin/python",
+      "command": "/Users/yokiel/GITHUB/Copilot-M365-Insights/.venv/bin/python",
       "args": ["-m", "src.mcp_server.server"],
-      "cwd": "/Users/yokiel/GITHUB/Copilot-Insights"
+      "cwd": "/Users/yokiel/GITHUB/Copilot-M365-Insights",
+      "env": {
+        "DB_PATH": "agent_telemetry_mwc.db",
+        "MCP_TRANSPORT": "stdio"
+      }
     }
   }
 }

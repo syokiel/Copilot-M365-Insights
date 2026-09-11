@@ -9,6 +9,9 @@ if len(_args) >= 2 and _args[0] == "--env":
     load_dotenv(Path(_args[1]), override=True)
     sys.argv = [sys.argv[0]] + _args[2:]
 
+from src.tls_compat import apply as _apply_tls_compat
+_TLS_RELAXED = _apply_tls_compat()
+
 from config.datasources import DataSourceConfig, get_datasource, load_datasource_configs
 from config.settings import settings
 from src.auth import AuthManager
@@ -56,6 +59,10 @@ def cmd_sync() -> str:
     """Fetch from all configured datasources and upsert into SQLite. Returns run_id."""
     settings.validate()
 
+    if _TLS_RELAXED:
+        print("NOTE: RELAX_X509_STRICT is on — VERIFY_X509_STRICT cleared for SSL-inspection "
+              "proxies. Certificates are still fully verified against the CA bundle.")
+
     ds_configs = load_datasource_configs()
     auth       = AuthManager()
     ordered    = AuthManager.fetch_order(ds_configs)
@@ -64,6 +71,9 @@ def cmd_sync() -> str:
 
     # Tracks whether environments were already fetched (PP Admin → Global Discovery fallback)
     envs_fetched = False
+    # Set by the [Graph] branch; agent-owner resolution is deferred until after
+    # the loop so it can see owner_id values written by later datasources.
+    graph_fetcher = None
 
     for ds in ordered:
         if not ds.enabled:
@@ -267,9 +277,15 @@ def cmd_sync() -> str:
                 ("Copilot user count trend",
                  lambda: fetcher.fetch_copilot_user_count_trend(settings.lookback_days),
                  store.upsert_copilot_count_trend),
-                ("Copilot packages",
-                 fetcher.fetch_copilot_packages,
-                 store.upsert_copilot_packages),
+                # Disabled 2026-09-11: the Agent 365 Graph APIs reject this tenant at the
+                # licensing check, before permissions are evaluated —
+                #   403 Forbidden: "Customer must be a licensed for Agent 365 in order to
+                #   use Agent 365 Graph APIs"
+                # Granting CopilotPackages.Read.All will NOT clear it; the tenant needs a
+                # Microsoft Agent 365 licence. Re-enable once that licence is in place.
+                # ("Copilot packages",
+                #  fetcher.fetch_copilot_packages,
+                #  store.upsert_copilot_packages),
                 ("O365 active user detail",
                  lambda: fetcher.fetch_o365_active_user_detail(settings.lookback_days),
                  store.upsert_o365_active_users),
@@ -283,22 +299,10 @@ def cmd_sync() -> str:
                     print(f"  {label}: {len(items)} fetched, {written} written")
                 except Exception as e:
                     print(f"  WARNING: {label} failed: {e}")
-            try:
-                existing_ids = set(store.fetch_aad_users().keys())
-                owner_ids = [
-                    uid for uid in {
-                        a.get("owner_id", "") for a in store.fetch_agents()
-                        if a.get("owner_id")
-                    }
-                    if uid not in existing_ids
-                ]
-                if owner_ids:
-                    resolved = fetcher.resolve_users(owner_ids)
-                    written  = store.upsert_aad_users(resolved)
-                    found    = sum(1 for u in resolved if u.get("found"))
-                    print(f"  user directory: {len(owner_ids)} looked up, {found} found, {written} written")
-            except Exception as e:
-                print(f"  WARNING: user directory failed: {e}")
+            # Owner resolution is deferred until after the datasource loop: the
+            # owner_id values it reads are populated by the Power Platform Admin
+            # inventory fetch, which runs later in the same pass.
+            graph_fetcher = fetcher
 
         # ── Microsoft Viva ───────────────────────────────────────────────────
         elif ds.key == "VIVA":
@@ -371,6 +375,32 @@ def cmd_sync() -> str:
                 print(f"  secure score entries: {len(scores)} fetched")
             except Exception as e:
                 print(f"  WARNING: secure score failed: {e}")
+
+    # ── Entra user directory (agent owners) ──────────────────────────────────
+    # Runs after the datasource loop so dim_agent.owner_id is already populated
+    # by the Power Platform Admin inventory fetch; resolving inside the [Graph]
+    # section left this a full run behind.
+    if graph_fetcher is not None:
+        print("\n[Entra User Directory] resolving agent owners")
+        try:
+            existing_ids = set(store.fetch_aad_users().keys())
+            owner_ids = [
+                uid for uid in {
+                    a.get("owner_id", "") for a in store.fetch_agents()
+                    if a.get("owner_id")
+                }
+                if uid not in existing_ids
+            ]
+            if owner_ids:
+                resolved = graph_fetcher.resolve_users(owner_ids)
+                written  = store.upsert_aad_users(resolved)
+                found    = sum(1 for u in resolved if u.get("found"))
+                print(f"  user directory: {len(owner_ids)} looked up, {found} found, {written} written")
+            else:
+                print(f"  nothing to resolve ({len(existing_ids)} owners already cached, "
+                      "no new owner_id values on dim_agent)")
+        except Exception as e:
+            print(f"  WARNING: user directory failed: {e}")
 
     # ── Agent → Journey → Persona mapping (experience model) ─────────────────
     if settings.agent_journey_map:
