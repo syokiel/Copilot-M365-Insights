@@ -18,7 +18,7 @@ from pathlib import Path
 
 def _read(path: str) -> list[dict]:
     p = Path(path)
-    if not p.exists():
+    if not path or not p.is_file():   # Path("") is "." — a dir, not a missing file
         return []
     with open(p, newline='', encoding='utf-8-sig') as fh:
         return list(csv.DictReader(fh))

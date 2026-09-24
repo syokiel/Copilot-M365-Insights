@@ -788,6 +788,45 @@ CREATE TABLE IF NOT EXISTS m365_cowork_usage (
     last_activity_date    TEXT
 );
 
+-- ── M365 Admin Center — Copilot Chat Usage Details (CSV import) ──────────
+
+CREATE TABLE IF NOT EXISTS m365_copilot_chat_usage (
+    user_principal_name            TEXT PRIMARY KEY,
+    -- display_name lives in dim_user; fetch_m365_copilot_chat_usage() joins it back in
+    user_guid                      TEXT,
+    last_activity_date             TEXT,
+    report_period                  TEXT,
+    report_refresh_date            TEXT,
+    prompts_submitted              INTEGER,
+    active_usage_days              INTEGER,
+    last_activity_m365_copilot_app TEXT,
+    last_activity_word             TEXT,
+    last_activity_excel            TEXT,
+    last_activity_powerpoint       TEXT,
+    last_activity_onenote          TEXT,
+    last_activity_edge             TEXT,
+    last_activity_teams            TEXT,
+    last_activity_outlook          TEXT,
+    last_activity_copilot_cloud    TEXT
+);
+
+-- ── M365 Admin Center — Copilot Connectors Usage (CSV import) ────────────
+
+CREATE TABLE IF NOT EXISTS m365_connectors_usage (
+    connection_id       TEXT PRIMARY KEY,
+    active_users        INTEGER,
+    responses_provided  INTEGER,
+    last_activity_date  TEXT
+);
+
+CREATE TABLE IF NOT EXISTS m365_connectors_users (
+    user_principal_name TEXT PRIMARY KEY,
+    -- display_name lives in dim_user; fetch_m365_connectors_users() joins it back in
+    connections_used    INTEGER,
+    responses_received  INTEGER,
+    last_activity_date  TEXT
+);
+
 -- ── Tokenomics — Copilot Credit Consumption (Power Platform Admin) ───────
 
 CREATE TABLE IF NOT EXISTS tokenomics_capacity_consumption (
@@ -3152,6 +3191,85 @@ class SqliteStore:
             FROM m365_cowork_usage m
             LEFT JOIN dim_user u ON u.user_principal_name = m.user_principal_name
             ORDER BY m.total_tasks DESC
+            """
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def upsert_m365_copilot_chat_usage(self, rows: list[dict]) -> int:
+        written = 0
+        with self._conn:
+            for r in rows:
+                self._upsert_dim_user(r.get('user_principal_name'), r.get('display_name'))
+                cur = self._conn.execute(
+                    """INSERT OR REPLACE INTO m365_copilot_chat_usage VALUES
+                    (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        r.get('user_principal_name'), r.get('user_guid'),
+                        r.get('last_activity_date'), r.get('report_period'),
+                        r.get('report_refresh_date'), r.get('prompts_submitted'),
+                        r.get('active_usage_days'), r.get('last_activity_m365_copilot_app'),
+                        r.get('last_activity_word'), r.get('last_activity_excel'),
+                        r.get('last_activity_powerpoint'), r.get('last_activity_onenote'),
+                        r.get('last_activity_edge'), r.get('last_activity_teams'),
+                        r.get('last_activity_outlook'), r.get('last_activity_copilot_cloud'),
+                    ),
+                )
+                written += cur.rowcount
+        return written
+
+    def fetch_m365_copilot_chat_usage(self) -> list[dict]:
+        rows = self._conn.execute(
+            """
+            SELECT m.*, u.display_name
+            FROM m365_copilot_chat_usage m
+            LEFT JOIN dim_user u ON u.user_principal_name = m.user_principal_name
+            ORDER BY m.prompts_submitted DESC
+            """
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def upsert_m365_connectors_usage(self, rows: list[dict]) -> int:
+        written = 0
+        with self._conn:
+            for r in rows:
+                cur = self._conn.execute(
+                    """INSERT OR REPLACE INTO m365_connectors_usage VALUES (?,?,?,?)""",
+                    (
+                        r.get('connection_id'), r.get('active_users'),
+                        r.get('responses_provided'), r.get('last_activity_date'),
+                    ),
+                )
+                written += cur.rowcount
+        return written
+
+    def fetch_m365_connectors_usage(self) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM m365_connectors_usage ORDER BY responses_provided DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def upsert_m365_connectors_users(self, rows: list[dict]) -> int:
+        written = 0
+        with self._conn:
+            for r in rows:
+                self._upsert_dim_user(r.get('user_principal_name'), r.get('display_name'))
+                cur = self._conn.execute(
+                    """INSERT OR REPLACE INTO m365_connectors_users VALUES (?,?,?,?)""",
+                    (
+                        r.get('user_principal_name'), r.get('connections_used'),
+                        r.get('responses_received'), r.get('last_activity_date'),
+                    ),
+                )
+                written += cur.rowcount
+        return written
+
+    def fetch_m365_connectors_users(self) -> list[dict]:
+        rows = self._conn.execute(
+            """
+            SELECT m.*, u.display_name
+            FROM m365_connectors_users m
+            LEFT JOIN dim_user u ON u.user_principal_name = m.user_principal_name
+            ORDER BY m.responses_received DESC
             """
         ).fetchall()
         return [dict(r) for r in rows]

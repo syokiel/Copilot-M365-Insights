@@ -482,6 +482,9 @@ def cmd_sync() -> str:
         settings.m365_usage_report_users,
         settings.m365_admin_cowork_usage,
         settings.m365_usage_report_copilot,
+        settings.m365_usage_report_copilot_chat,
+        settings.m365_connectors_usage,
+        settings.m365_connectors_users,
     ]):
         print("\n[M365 Admin/Usage] importing CSV reports")
         from src.fetchers.m365_admin_report import M365AdminReportImporter
@@ -492,6 +495,9 @@ def cmd_sync() -> str:
             users_path=settings.m365_usage_report_users,
             cowork_usage_path=settings.m365_admin_cowork_usage,
             usage_copilot_path=settings.m365_usage_report_copilot,
+            usage_copilot_chat_path=settings.m365_usage_report_copilot_chat,
+            connectors_usage_path=settings.m365_connectors_usage,
+            connectors_users_path=settings.m365_connectors_users,
         )
         for label, fetch_fn, upsert_fn in [
             ("agent inventory",   m365.fetch_agent_inventory,   store.upsert_m365_admin_agent_inventory),
@@ -500,6 +506,9 @@ def cmd_sync() -> str:
             ("usage users",       m365.fetch_usage_users,        store.upsert_m365_usage_users),
             ("cowork usage",      m365.fetch_cowork_usage,       store.upsert_m365_cowork_usage),
             ("usage copilot detail", m365.fetch_usage_copilot,   store.upsert_m365_usage_copilot_detail),
+            ("copilot chat usage", m365.fetch_usage_copilot_chat, store.upsert_m365_copilot_chat_usage),
+            ("connectors usage",  m365.fetch_connectors_usage,   store.upsert_m365_connectors_usage),
+            ("connectors users",  m365.fetch_connectors_users,   store.upsert_m365_connectors_users),
         ]:
             try:
                 items = fetch_fn()
@@ -648,6 +657,9 @@ def cmd_export(run_id: str) -> None:
     m365_usage_agent_users              = store.fetch_m365_usage_agent_users()
     m365_usage_users                    = store.fetch_m365_usage_users()
     m365_cowork_usage                   = store.fetch_m365_cowork_usage()
+    m365_copilot_chat_usage             = store.fetch_m365_copilot_chat_usage()
+    m365_connectors_usage               = store.fetch_m365_connectors_usage()
+    m365_connectors_users               = store.fetch_m365_connectors_users()
     viva_consumption_detail             = store.fetch_viva_consumption_detail()
     viva_reports_cs_action_metrics      = store.fetch_viva_reports_cs_action_metrics()
     tokenomics_capacity_consumption     = store.fetch_tokenomics_capacity_consumption()
@@ -724,6 +736,9 @@ def cmd_export(run_id: str) -> None:
         m365_usage_agent_users=m365_usage_agent_users,
         m365_usage_users=m365_usage_users,
         m365_cowork_usage=m365_cowork_usage,
+        m365_copilot_chat_usage=m365_copilot_chat_usage,
+        m365_connectors_usage=m365_connectors_usage,
+        m365_connectors_users=m365_connectors_users,
         viva_consumption_detail=viva_consumption_detail,
         viva_reports_cs_action_metrics=viva_reports_cs_action_metrics,
         tokenomics_capacity_consumption=tokenomics_capacity_consumption,

@@ -102,6 +102,11 @@ class Settings:
     # M365 Admin > Reports > Usage > M365 Copilot > Copilot > Copilot Usage Details
     # export — merges into the Graph-sourced M365_Copilot_Usage sheet/table.
     m365_usage_report_copilot: str = ""
+    # M365 Admin > Reports > Usage > M365 Copilot > Copilot Chat > Usage Details export
+    m365_usage_report_copilot_chat: str = ""
+    # M365 Admin > Reports > Usage > M365 Copilot > Connectors > Export (Connectors / Users tabs)
+    m365_connectors_usage: str = ""
+    m365_connectors_users: str = ""
     # ── Power Platform Admin Center — Copilot credit consumption CSV exports (Tokenomics_* tables)
     ppadmin_licenses_cs_consumption_manageagents: str = ""
     ppadmin_licenses_cs_consumption_env: str = ""
@@ -197,6 +202,11 @@ class Settings:
         self.m365_usage_report_copilot = os.getenv(
             "M365ADMIN_USAGE_COPILOT", self.m365_usage_report_copilot
         ).strip()
+        self.m365_usage_report_copilot_chat = os.getenv(
+            "M365ADMIN_USAGE_COPILOT_CHAT", self.m365_usage_report_copilot_chat
+        ).strip()
+        self.m365_connectors_usage = os.getenv("M365ADMIN_CONNECTORS_USAGE", self.m365_connectors_usage).strip()
+        self.m365_connectors_users = os.getenv("M365ADMIN_CONNECTORS_USERS", self.m365_connectors_users).strip()
         self.ppadmin_licenses_cs_consumption_manageagents = (
             os.getenv("PPADMIN_LICENSES_CS_CONSUMPTION_MANAGEAGENTS") or
             os.getenv("PPADMIN_CAPACITY_CONSUMPTION", self.ppadmin_licenses_cs_consumption_manageagents)
@@ -230,6 +240,7 @@ class Settings:
             "m365_admin_agent_inventory",
             "m365_usage_report_agents", "m365_usage_report_agent_users", "m365_usage_report_users",
             "m365_admin_cowork_usage", "m365_usage_report_copilot",
+            "m365_usage_report_copilot_chat", "m365_connectors_usage", "m365_connectors_users",
             "ppadmin_licenses_cs_consumption_manageagents", "ppadmin_licenses_cs_consumption_env",
             "ppadmin_licenses_cs_consumption_agent", "ppadmin_licenses_cs_consumption_user",
             "m365_usage_activations_users", "m365_usage_active_users_services",

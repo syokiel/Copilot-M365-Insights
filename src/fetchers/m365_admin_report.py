@@ -11,6 +11,9 @@ Supported files (passed as direct file paths via config env vars):
   DeclarativeAgents_Users_30_*.csv                          → m365_usage_users
   CoworkUserDetails*.csv                                    → m365_cowork_usage
   FastCopilotActivityUserDetail*.csv                        → m365_copilot_usage (merged, CSV-only columns)
+  FastCopilotChatActivityUserDetail*.csv                    → m365_copilot_chat_usage
+  ConnectorsUsage_Connectors_P30_*.csv                      → m365_connectors_usage
+  ConnectorsUsage_Users_P30_*.csv                           → m365_connectors_users
 """
 import csv
 import re
@@ -52,7 +55,7 @@ def _norm_date(v: str) -> str:
 
 def _int(v) -> int | None:
     try:
-        s = str(v).strip()
+        s = str(v).strip().replace(',', '')   # "1,606" — thousands separators
         return int(s) if s else None
     except (ValueError, TypeError):
         return None
@@ -64,7 +67,7 @@ def _bool(v) -> int:
 
 def _read(path: str) -> list[dict]:
     p = Path(path)
-    if not p.exists():
+    if not path or not p.is_file():   # Path("") is "." — a dir, not a missing file
         return []
     with open(p, newline='', encoding='utf-8-sig') as fh:
         return list(csv.DictReader(fh))
@@ -81,6 +84,9 @@ class M365AdminReportImporter:
         users_path: str = "",
         cowork_usage_path: str = "",
         usage_copilot_path: str = "",
+        usage_copilot_chat_path: str = "",
+        connectors_usage_path: str = "",
+        connectors_users_path: str = "",
     ) -> None:
         self._inventory_path    = inventory_path
         self._agents_path       = agents_path
@@ -88,6 +94,9 @@ class M365AdminReportImporter:
         self._users_path        = users_path
         self._cowork_usage_path = cowork_usage_path
         self._usage_copilot_path = usage_copilot_path
+        self._usage_copilot_chat_path = usage_copilot_chat_path
+        self._connectors_usage_path = connectors_usage_path
+        self._connectors_users_path = connectors_users_path
 
     def fetch_agent_inventory(self) -> list[dict]:
         out = []
@@ -218,5 +227,57 @@ class M365AdminReportImporter:
                 'last_activity_loop_copilot':      _norm_date(r.get('Last activity date of Loop Copilot (UTC)', '')),
                 'last_activity_m365_copilot_app':  _norm_date(r.get('Last activity date of Microsoft 365 Copilot (app) (UTC)', '')),
                 'last_activity_edge':              _norm_date(r.get('Last activity date of Edge (UTC)', '')),
+            })
+        return out
+
+    def fetch_usage_copilot_chat(self) -> list[dict]:
+        """Per-user Microsoft 365 Copilot Chat activity from the Copilot Chat
+        Usage Details export — covers all users with Copilot Chat access,
+        licensed or not, so it surfaces unlicensed demand."""
+        out = []
+        for r in _read(self._usage_copilot_chat_path):
+            out.append({
+                'user_principal_name':           r.get('User principal name', ''),
+                'user_guid':                     r.get('User guid', ''),
+                'display_name':                  r.get('Display name', ''),
+                'last_activity_date':            _norm_date(r.get('Last activity date', '')),
+                'report_period':                 r.get('Report period', ''),
+                'report_refresh_date':           _norm_date(r.get('Report refresh date', '')),
+                'prompts_submitted':             _int(r.get('Prompts submitted')),
+                'active_usage_days':             _int(r.get('Active usage days')),
+                'last_activity_m365_copilot_app': _norm_date(r.get('Last activity date of Microsoft 365 Copilot (app) (UTC)', '')),
+                'last_activity_word':            _norm_date(r.get('Last activity date of Word (UTC)', '')),
+                'last_activity_excel':           _norm_date(r.get('Last activity date of Excel (UTC)', '')),
+                'last_activity_powerpoint':      _norm_date(r.get('Last activity date of PowerPoint (UTC)', '')),
+                'last_activity_onenote':         _norm_date(r.get('Last activity date of OneNote (UTC)', '')),
+                'last_activity_edge':            _norm_date(r.get('Last activity date of Edge (UTC)', '')),
+                'last_activity_teams':           _norm_date(r.get('Last activity date of Teams (UTC)', '')),
+                'last_activity_outlook':         _norm_date(r.get('Last activity date of Outlook (UTC)', '')),
+                'last_activity_copilot_cloud':   _norm_date(r.get('Last activity date of Copilot.cloud.microsoft (UTC)', '')),
+            })
+        return out
+
+    def fetch_connectors_usage(self) -> list[dict]:
+        """Per-connector (Copilot connector / Graph connector) 30-day usage."""
+        out = []
+        for r in _read(self._connectors_usage_path):
+            out.append({
+                'connection_id':      r.get('Connection ID', ''),
+                'active_users':       _int(r.get('Active users')),
+                'responses_provided': _int(r.get('Responses provided in Copilot')),
+                'last_activity_date': _norm_date(r.get('Last activity date (UTC)', '')),
+            })
+        return out
+
+    def fetch_connectors_users(self) -> list[dict]:
+        """Per-user 30-day Copilot connector usage rollup."""
+        out = []
+        for r in _read(self._connectors_users_path):
+            out.append({
+                'user_principal_name': r.get('User ID', ''),
+                'display_name':        r.get('Display name', ''),
+                'connections_used':    _int(r.get('Connections used')),
+                'responses_received':  _int(r.get('Responses received from connectors')),
+                'last_activity_date':  _norm_date(r.get('Last activity date (UTC)', '')),
             })
         return out

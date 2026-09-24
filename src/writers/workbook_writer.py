@@ -14,7 +14,10 @@ from src.writers import (
     sheet_invocations,
     sheet_kpi_history,
     sheet_m365_admin_inventory,
+    sheet_m365_connectors_usage,
+    sheet_m365_connectors_users,
     sheet_m365_copilot,
+    sheet_m365_copilot_chat_usage,
     sheet_m365_copilot_trend,
     sheet_m365_cowork_usage,
     sheet_m365_packages,
@@ -90,6 +93,9 @@ def build_workbook(
     m365_usage_agent_users: list[dict] | None = None,
     m365_usage_users: list[dict] | None = None,
     m365_cowork_usage: list[dict] | None = None,
+    m365_copilot_chat_usage: list[dict] | None = None,
+    m365_connectors_usage: list[dict] | None = None,
+    m365_connectors_users: list[dict] | None = None,
     viva_consumption_detail: list[dict] | None = None,
     viva_reports_cs_action_metrics: list[dict] | None = None,
     tokenomics_capacity_consumption: list[dict] | None = None,
@@ -233,6 +239,9 @@ def build_workbook(
     _if("M365_Usage_AgentUsers", sheet_m365_usage_agent_users.write, m365_usage_agent_users or [])
     _if("M365_Usage_Users",      sheet_m365_usage_users.write,     m365_usage_users or [])
     _if("M365_Cowork_Usage",     sheet_m365_cowork_usage.write,    m365_cowork_usage or [])
+    _if("M365_Copilot_Chat_Usage", sheet_m365_copilot_chat_usage.write, m365_copilot_chat_usage or [])
+    _if("M365_Connectors_Usage", sheet_m365_connectors_usage.write, m365_connectors_usage or [])
+    _if("M365_Connectors_Users", sheet_m365_connectors_users.write, m365_connectors_users or [])
     _if("Tokenomics_Capacity",    sheet_tokenomics_capacity.write,    tokenomics_capacity_consumption or [])
     _if("Tokenomics_Entitlement", sheet_tokenomics_entitlement.write, tokenomics_entitlement_consumption or [])
     _if("Tokenomics_PerAgent",    sheet_tokenomics_entitlement_per_agent.write, tokenomics_entitlement_per_agent or [])
