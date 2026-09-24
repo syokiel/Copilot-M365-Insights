@@ -265,10 +265,37 @@ Full Copilot Studio / Copilot agent inventory from the M365 Admin Center (CSV im
 than viva_reports_cs_* (no outcome detail) but always available once imported.
 - agent_id (PK), agent_name, creator_type
 - active_users_licensed, active_users_unlicensed, responses_sent, last_activity_date
+- resolved_agent_id: Copilot Studio bot GUID when it could be resolved (see dim_agent_xref)
+
+### dim_agent_xref
+Agent ID crosswalk — each source names agents in its own ID space, so join through here.
+- source ('m365_usage' | 'viva_cs'), source_agent_id (PK with source), agent_name
+- title_id (M365 Admin inventory id), bot_id (Copilot Studio GUID)
+- match_method: override | exact_id | name_unique | unresolved
+Viva Copilot Studio report agent_ids are NOT bot GUIDs unless Power Platform data is loaded;
+use this table (bot_id) to join viva_reports_cs_* to m365_admin_agent_inventory / m365_usage_*.
+
+### m365_copilot_usage (view)
+Per-user M365 Copilot usage, combining the Graph API pull (m365_copilot_usage_graph) and the
+M365 Admin CSV export (m365_copilot_usage_csv); each source refreshes independently.
+- user_principal_name, last_activity_date, per-app prompt counts (teams_chats, word, excel, ...)
+- prompts_all_apps, prompts_copilot_chat_work/web, active_usage_days_all_apps, last_activity_* per surface
+
+### m365_copilot_chat_usage
+Per-user Microsoft 365 Copilot Chat usage (CSV import) — includes unlicensed users.
+- user_principal_name (PK), prompts_submitted, active_usage_days, last_activity_date, last_activity_* per app
+
+### m365_connectors_usage / m365_connectors_users
+30-day Copilot connector usage (CSV import).
+- m365_connectors_usage: connection_id (PK), active_users, responses_provided, last_activity_date
+- m365_connectors_users: user_principal_name (PK), connections_used, responses_received, last_activity_date
+
+### dim_user
+One display_name per user_principal_name, gathered from every source.
 
 ### m365_usage_agent_users
 Per-user per-agent usage from the same M365 Admin rollup.
-- agent_id, username (PK), agent_name, creator_type, responses_sent, last_activity_date
+- agent_id, user_principal_name (PK), agent_name, creator_type, responses_sent, last_activity_date
 
 ### dim_agent_journey_persona
 Maps agent_id to a journey_name + persona_type for the experience model.
@@ -372,9 +399,11 @@ pva_agents.environment_id = pva_environments.environment_id
 pva_agents.agent_id = pva_agent_solutions.agent_id
 pva_agents.agent_id = az_dependency_failures.agent_id (approximate — depends on agent config)
 pva_agents.agent_id = pp_bot_sessions.bot_id = pp_bot_topic_analytics.bot_id
-pva_agents.agent_id = viva_reports_cs_copilot_agents.agent_id = viva_reports_cs_session_metrics.agent_id
+viva_reports_cs_copilot_agents.agent_id = viva_reports_cs_session_metrics.agent_id
 pva_agents.agent_id = m365_admin_agent_inventory.bot_id
 m365_admin_agent_inventory.title_id = m365_usage_agents.agent_id = m365_usage_agent_users.agent_id
+dim_agent_xref (source='viva_cs').source_agent_id = viva_reports_cs_*.agent_id → dim_agent_xref.bot_id
+dim_agent_xref (source='m365_usage').source_agent_id = m365_usage_agents.agent_id → dim_agent_xref.bot_id
 dim_agent_journey_persona.agent_id joins any of the agent_id columns above for persona/journey context
 
 ## Cross-reference pattern
@@ -388,6 +417,12 @@ To find conversations with both OTel failures AND Azure Monitor signals:
   GROUP BY e.conversation_id
 
 ## Notes
+- user_principal_name values are stored lower-cased in every table — compare with lower()
+- viva_reports_copilot_adoption / _impact only hold person-weeks with Copilot activity;
+  zero-activity weeks are pruned. dim_copilot_person keeps each person's first/last date in
+  each report (use it for "enabled users" counts). Impact work-pattern rows are all kept.
+- Point-in-time CSV exports (usage reports, inventories) are replaced on each import;
+  import_log records every load (table_name, mode snapshot|merge, row_count, imported_at)
 - Filter design_mode = 0 for production traffic only
 - user_id is an Azure AD object ID (Graph API lookup needed for email)
 - There is NO agent_name column in conversation_events or connector_calls — use pva_agents for agent names

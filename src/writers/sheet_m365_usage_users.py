@@ -8,7 +8,7 @@ HEADERS = [
 ]
 
 _FIELDS = [
-    "username", "display_name", "agents_used",
+    "user_principal_name", "display_name", "agents_used",
     "agent_responses_received", "last_activity_date",
 ]
 

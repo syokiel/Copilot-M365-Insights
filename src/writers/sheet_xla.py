@@ -6,7 +6,8 @@ Data sources (from the PDF spec):
   viva_reports_cs_autonomous_metrics → Performance (autonomous reliability)
   viva_reports_cs_action_metrics     → Quality (action-level success)
   viva_reports_cs_weekly_active_users → Collaboration (WAU trend)
-  viva_reports_copilot_adoption      → Collaboration (M365 adoption %)
+  viva_reports_copilot_adoption      → Collaboration (M365 active users — rows with Copilot activity)
+  dim_copilot_person                 → Collaboration (M365 enabled users — Adoption report date span)
   kpi_snapshots                      → Collaboration (agent inventory)
 """
 from collections import defaultdict
@@ -54,6 +55,7 @@ def write(
     kpi_snapshot: dict | None,
     agents: dict[str, dict] | None,
     lookback_days: int = 90,
+    copilot_people: list[dict] | None = None,
 ) -> None:
     ag = agents or {}
     cutoff = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
@@ -87,7 +89,10 @@ def write(
     act_success = sum(r.get("successful_actions_in_runs") or 0 for r in acts)
 
     adopt_90d    = [r for r in adoption if r.get("metric_date", "") >= cutoff]
-    adopt_ids    = {r.get("person_id") for r in adopt_90d if r.get("person_id")}
+    # Zero-activity person-weeks are pruned from the adoption rows, so
+    # "enabled" comes from each person's Adoption-report date span instead.
+    adopt_ids    = {p["person_id"] for p in (copilot_people or [])
+                    if (p.get("adoption_last_date") or "") >= cutoff}
     adopt_active = {r.get("person_id") for r in adopt_90d
                     if r.get("person_id") and (r.get("total_copilot_actions") or 0) > 0}
     peak_wau     = max((r.get("active_user_count") or 0 for r in wau), default=0)
@@ -203,7 +208,7 @@ def write(
     # ── Collaboration & Adoption ───────────────────────────────────────────
     section("🤝  Collaboration & Adoption")
     mrow("Collaboration", "M365 Copilot Enabled Users",   len(adopt_ids),
-         "COUNT(DISTINCT person_id) — viva_reports_copilot_adoption")
+         "COUNT(person_id WHERE adoption_last_date >= cutoff) — dim_copilot_person")
     mrow("Collaboration", "M365 Copilot Active Users",    len(adopt_active),
          "COUNT(DISTINCT person_id WHERE total_copilot_actions > 0)")
     mrow("Collaboration", "M365 Copilot Adoption Rate",
@@ -320,7 +325,7 @@ def write(
         mrow("System Reliance",
              "Agent WAU vs. M365 Copilot Enabled Users (latest week)",
              f"{reliance_pct:.1f}%  ({latest_wau_val:,} WAU  /  {len(adopt_ids):,} enabled)",
-             "Latest week agent WAU ÷ COUNT(DISTINCT person_id) — viva_reports_copilot_adoption")
+             "Latest week agent WAU ÷ enabled users (dim_copilot_person)")
 
     row += 1
 

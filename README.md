@@ -84,7 +84,10 @@ Governance and telemetry reporting for Microsoft Copilot Studio agents across an
 | **Environments** | Power Platform environments |
 | **Publishers** | Dataverse publishers |
 | **DLP Policies** | Data loss prevention policy list |
-| **M365_Copilot_Usage** | Per-user M365 Copilot usage (Graph API) |
+| **M365_Copilot_Usage** | Per-user M365 Copilot usage (Graph API and/or the Copilot Usage Details CSV export) |
+| **M365_Copilot_Chat_Usage** | Per-user Microsoft 365 Copilot Chat prompts and activity by surface, licensed and unlicensed users |
+| **M365_Connectors_Usage** | 30-day per-connector active users and responses provided in Copilot |
+| **M365_Connectors_Users** | 30-day per-user connectors used and responses received |
 | **M365_Copilot_Trend** | Tenant-wide active user count trend |
 | **M365_Copilot_Packages** | Copilot licence packages |
 | **M365_O365_Users** | Broad O365 activity (Exchange, SharePoint, Teams) |
@@ -109,7 +112,7 @@ Governance and telemetry reporting for Microsoft Copilot Studio agents across an
 | **Viva_CS_Topics** | Per-topic session breakdown |
 | **Viva_CS_WAU** | Weekly active users per agent |
 | **Viva_CS_Autonomous** | Daily autonomous run summary |
-| **Viva_Copilot_Adoption** | Per-user weekly Copilot prompt counts by app |
+| **Viva_Copilot_Adoption** | Per-user weekly Copilot prompt counts by app (weeks with Copilot activity only) |
 | **Viva_Copilot_Impact** | Per-user productivity signals alongside Copilot activity |
 | **Tokenomics_Summary** | Credit consumption dashboard: entitlement, burn rate, top agents/users, credits by service |
 | **Tokenomics_Capacity** | Daily capacity consumption by resource/feature/channel |
@@ -169,15 +172,26 @@ Scores ≥ 75 are green, 50–74 amber, < 50 red in the Excel sheet.
 
 ---
 
-## Usage-to-Credit Agent ID Crosswalk
+## Agent ID Crosswalk
 
-`m365_usage_agents.agent_id` (from the M365 Admin usage report) is **not** the Copilot Studio bot GUID used everywhere else — `dim_agent.agent_id`, `m365_admin_agent_inventory.bot_id`, and `tokenomics_entitlement_per_agent.agent_id` all share that GUID, but the usage report has its own, unrelated ID scheme. The only bridge between usage volume (responses sent, active users) and credit consumption (billed/non-billed credits) is the agent's display name.
+Each source names agents in its own ID space:
 
-On every sync, `m365_usage_agents.resolved_agent_id` is auto-populated by matching `agent_name` against `m365_admin_agent_inventory.name` — but **only** when that name maps to exactly one `bot_id`. In tenants with cloned agents (the same name published across dev/test/prod, or duplicated demo agents), a name can map to several different bot IDs, and auto-resolution deliberately leaves `resolved_agent_id` NULL rather than guessing wrong.
+| Source | ID | Example |
+|---|---|---|
+| Power Platform / Dataverse, tokenomics, `m365_admin_agent_inventory.bot_id` | Copilot Studio bot GUID | `73ef9d26-ac47-f111-…` |
+| Viva Copilot Studio report (`viva_reports_cs_*`) | Viva AgentId (a separate GUID space) | `01e3d1c9-25f8-af6f-…` |
+| M365 Admin usage report / inventory `title_id` | Title ID | `T_…`, `P_…`, `U_…`, `SP…` |
 
-To force a mapping for those ambiguous names:
+At the end of every sync the `dim_agent_xref` table is rebuilt to map each source's agent onto the bot GUID, recording how the match was made (`match_method`):
 
-1. Run a sync, then check unresolved names: `store.fetch_m365_usage_agents_unresolved()` (or query `m365_usage_agents WHERE resolved_agent_id IS NULL` directly).
+- **M365 usage-report agents:** manual override (by name) → exact match on the inventory `title_id` → an inventory name that maps to exactly one bot GUID → `unresolved`.
+- **Viva Copilot Studio agents:** their own ID when Power Platform/Dataverse data is loaded → exact inventory `bot_id` → a unique inventory name → `unresolved`.
+
+Names shared by several agents (the same agent cloned across dev/test/prod) are never guessed — they stay `unresolved`. `m365_usage_agents.resolved_agent_id` is filled from the crosswalk, so joins between usage volume and credit consumption should key off `resolved_agent_id` (or `dim_agent_xref.bot_id`), not agent names. Many usage-report agents (e.g. SharePoint agents) match an inventory row but have no Copilot Studio GUID at all; `dim_agent_xref.title_id` still links those.
+
+To force a mapping for an ambiguous name:
+
+1. Run a sync, then list unresolved agents: `SELECT * FROM dim_agent_xref WHERE match_method = 'unresolved'`.
 2. Add a row per name to your override file:
 
 ```csv
@@ -185,9 +199,7 @@ agent_name,bot_id
 Software Provisioning Agent,73ef9d26-ac47-f111-bec6-00224805f648
 ```
 
-3. Point `USAGE_AGENT_ID_OVERRIDES` at the file in your `.env` and re-run sync. Overrides always win over auto-resolution.
-
-Downstream joins between usage and credit data should key off `resolved_agent_id`, not `agent_name`.
+3. Point `USAGE_AGENT_ID_OVERRIDES` at the file in your `.env` and re-run sync. Overrides always win over automatic matching.
 
 ---
 
@@ -240,7 +252,10 @@ M365ADMIN_USAGE_REPORT_AGENTS=imports/June2026/DeclarativeAgents_Agents_30_2026-
 M365ADMIN_USAGE_REPORT_AGENTUSERS=imports/June2026/DeclarativeAgents_Users___agents_30_2026-06-12T16-09-29.csv
 M365ADMIN_USAGE_REPORT_USERS=imports/June2026/DeclarativeAgents_Users_30_2026-06-18T18-11-03.csv
 M365ADMIN_COWORK_USAGE=imports/June2026/Usage_Reports/CoworkUserDetails.csv
-M365ADMIN_USAGE_COPILOT=imports/June2026/Usage_Reports/FastCopilotActivityUserDetail.csv
+M365ADMIN_USAGE_COPILOT=imports/June2026/Usage_Reports/FastCopilotActivityUserDetail*.csv
+M365ADMIN_USAGE_COPILOT_CHAT=imports/June2026/Copilot_Reports/FastCopilotChatActivityUserDetail*.csv
+M365ADMIN_CONNECTORS_USAGE=imports/June2026/Copilot_Reports/ConnectorsUsage_Connectors_P30_*.csv
+M365ADMIN_CONNECTORS_USERS=imports/June2026/Copilot_Reports/ConnectorsUsage_Users_P30_*.csv
 
 # Power Platform Admin Center — Copilot credit consumption (Tokenomics_* tables)
 PPADMIN_LICENSES_CS_CONSUMPTION_ENV=imports/June2026/EntitlementConsumptionTenantDetailsReport_MCSMessages_180.csv
@@ -263,6 +278,8 @@ BILLING_LICENCES=imports/June2026/Usage_Reports/ProductList.csv
 # Experience model — Agent → Journey → Persona mapping for XLA scoring
 AGENT_JOURNEY_MAP=imports/agent_journey_persona_map.csv
 ```
+
+Paths accept `*` wildcards; the most recently modified match is used, so the timestamp the M365 Admin Center appends to every export filename doesn't need editing. Leave a variable unset (or commented out) when you don't have that export — the importer is skipped.
 
 For multi-tenant use, keep a separate `.env` file per tenant and pass it with `--env`:
 
@@ -293,6 +310,33 @@ python -m src.main import-viva <path/to/csv/folder>
 The workbook is written to `OUTPUT_PATH` (default: `agent_telemetry_<timestamp>.xlsx`).
 
 CSV imports (Viva, M365 Admin, Power Platform, and the XLA mapping file) run automatically as part of `sync` and `all` whenever the corresponding env var is set.
+
+---
+
+## Data storage and monthly refreshes
+
+Keep **one SQLite database per tenant** (`DB_PATH`) and re-run `sync` each month against the new exports — history accumulates, point-in-time reports are replaced.
+
+| Kind of data | Examples | On each import |
+|---|---|---|
+| **Snapshot** (point-in-time, usually a 30-day window) | M365 usage reports, agent inventory, Copilot Chat / connectors usage, licences, activations, Power Platform environments / DLP | Table is cleared and reloaded, so users and agents missing from the new export don't linger |
+| **History** (keyed by date) | Viva Copilot Studio daily/weekly metrics, Copilot Adoption/Impact, credit consumption by date, OTel events, KPI snapshots | Merged by key — new dates are added, re-imported dates are updated |
+
+- An empty or missing export leaves the previous snapshot in place rather than wiping it.
+- Every load is recorded in `import_log` (table, `snapshot`/`merge`, row count, time), and every sync in `sync_runs`.
+- Copilot Adoption/Impact person-weeks with no Copilot activity are dropped after import (typically well over half the rows). Each person's first/last date in each report is kept in `dim_copilot_person`, which is what "enabled users" figures (e.g. the XLA scorecard) count. Impact work-pattern rows are all kept; for dropped weeks the Impact sheet shows 0 for action metrics and a blank "Enabled Days".
+- User principal names are stored lower-cased in every table so sources with different casing join correctly.
+- Existing databases are upgraded in place automatically the first time a newer version opens them (including the copy the deployed MCP server downloads). A very large tenant DB can take ~15–20 s on that first open.
+
+A typical monthly refresh for a tenant:
+
+```bash
+# 1. Save the month's exports under imports/<Tenant>/<Tenant>_<MON><YEAR>/
+#    (CS+Agents+Report_*/, ConsumptionDashboard-Weekly_*/, Copilot_Reports/, Usage_Reports/)
+# 2. Repoint the paths in .env.<tenant> at the new folder; comment out any export you didn't get
+# 3. Sync and export
+python -m src.main --env .env.<tenant> all
+```
 
 ---
 
@@ -352,7 +396,7 @@ src/
   writers/        # One module per Excel sheet
   mcp_server/     # MCP server (stdio + HTTP)
   agent/          # Bot Framework conversational agent
-  store/          # SQLite + Azure Blob Storage
+  store/          # SQLite store (per-domain mixins: _schema/_base/_migrations + one module per data area) + Azure Blob Storage
 config/           # Settings and datasource config (gitignored — use .env)
 imports/          # Drop CSV exports here (gitignored)
   agent_journey_persona_map.csv   # XLA experience model — agent → journey → persona

@@ -87,6 +87,7 @@ def build_workbook(
     o365_active_users: list[dict] | None = None,
     m365_app_users: list[dict] | None = None,
     viva_reports_copilot_adoption: list[dict] | None = None,
+    copilot_people: list[dict] | None = None,
     viva_reports_copilot_impact: list[dict] | None = None,
     m365_admin_agent_inventory: list[dict] | None = None,
     m365_usage_agents: list[dict] | None = None,
@@ -178,6 +179,7 @@ def build_workbook(
             adoption=viva_reports_copilot_adoption or [],
             kpi_snapshot=latest_kpi,
             agents=viva_reports_cs_copilot_agents or {},
+            copilot_people=copilot_people or [],
         )
 
     _tok = (

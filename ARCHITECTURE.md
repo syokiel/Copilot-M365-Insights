@@ -111,10 +111,11 @@ Both paths converge on the same `SqliteStore.upsert_*` methods, so downstream co
 
 ### 4. Storage (`src/store/sqlite_store.py`)
 
-A single SQLite file is the system of record. `SqliteStore`:
+A single SQLite file per tenant is the system of record, kept across monthly runs. `SqliteStore` is assembled from one mixin per data area (`telemetry.py`, `agents.py`, `m365_admin.py`, `m365_usage.py`, `viva.py`, `tokenomics.py`, `kpi.py`) over a shared base (`_base.py`); the DDL, indexes and compatibility views live in `_schema.py`, and in-place upgrades of existing databases in `_migrations.py`.
 
-- Owns the full DDL for every table plus idempotent `_migrate()` logic, so schema changes ship as additive migrations rather than requiring a fresh DB.
-- Upserts are keyed by a stable identity per row type (not always `run_id` alone — e.g. conversation events dedupe on their own natural key) so re-running `sync` doesn't duplicate rows, while a `run_id` column tags each sync pass for point-in-time export.
+- Every load goes through `_begin_import()`, which records it in `import_log`. Point-in-time datasets (30-day usage exports, inventories, license lists) are **snapshots**: the table is cleared and reloaded, so users or agents missing from the new export don't linger. Date-keyed history (daily/weekly metrics, OTel events, consumption by date) is **merged** by key, so re-running `sync` doesn't duplicate rows and history accumulates.
+- Every sync opens a `sync_runs` row (`begin_run()`) and ends with `finish_run()`, which prunes zero-activity Copilot Adoption/Impact person-weeks (keeping per-person date spans in `dim_copilot_person`) and rebuilds the `dim_agent_xref` agent ID crosswalk.
+- User principal names are stored lower-cased everywhere so cross-source joins match.
 - Exposes `compute_kpi_snapshot()` / `upsert_kpi_snapshot()` to persist a tenant-wide KPI rollup on every sync, which is what powers the `KPI History` sheet's trend-over-time view — this is the one piece of derived data computed at sync time rather than at export/read time.
 - Maintains compatibility views (e.g. `pva_agents`) so both the workbook export path and the MCP server query the same shapes without duplicating view logic — the MCP server explicitly imports `SqliteStore` itself (rather than hand-rolling schema) specifically to avoid the two drifting apart.
 - Optionally syncs the whole DB file to Azure Blob Storage (`src/store/blob_store.py`) after `sync`, which is how the deployed MCP server (running in a container with no persistent local disk) gets a copy of the latest data.

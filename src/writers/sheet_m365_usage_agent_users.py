@@ -17,7 +17,7 @@ def write(ws: Worksheet, rows: list[dict]) -> None:
         for i, r in enumerate(rows, start=2):
             ws.cell(row=i, column=1, value=r.get("agent_id", ""))
             ws.cell(row=i, column=2, value=r.get("agent_name", ""))
-            ws.cell(row=i, column=3, value=r.get("username", ""))
+            ws.cell(row=i, column=3, value=r.get("user_principal_name", ""))
             ws.cell(row=i, column=4, value=r.get("creator_type", ""))
             ws.cell(row=i, column=5, value=r.get("responses_sent"))
             ws.cell(row=i, column=6, value=r.get("last_activity_date", ""))

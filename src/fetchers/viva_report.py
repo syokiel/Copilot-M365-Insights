@@ -286,7 +286,6 @@ class VivaReportImporter:
                 'agent_type':      r.get('AgentType', ''),
                 'is_included':     1 if str(r.get('AgentIncluded', '')).upper() == 'TRUE' else 0,
                 'excluded_reason': r.get('AgentExcludedReason', ''),
-                'icon':            r.get('AgentIcon', ''),
             })
         return out
 

@@ -159,7 +159,7 @@ class M365AdminReportImporter:
         for r in _read(self._agent_users_path):
             out.append({
                 'agent_id':           r.get('Agent ID', ''),
-                'username':           r.get('Username', ''),
+                'user_principal_name': r.get('Username', ''),
                 'agent_name':         r.get('Agent name', ''),
                 'creator_type':       r.get('Creator type', ''),
                 'responses_sent':     _int(r.get('Responses sent to users')),
@@ -172,7 +172,7 @@ class M365AdminReportImporter:
         out = []
         for r in _read(self._users_path):
             out.append({
-                'username':                 r.get('Username', ''),
+                'user_principal_name':      r.get('Username', ''),
                 'display_name':             r.get('Display name', ''),
                 'agents_used':              _int(r.get('Number of agents used')),
                 'agent_responses_received': _int(r.get('Agent responses received')),

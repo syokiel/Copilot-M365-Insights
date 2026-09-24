@@ -41,7 +41,7 @@ There is no test suite, linter, or type-checker configured in this repo (no `tes
 
 ## Architecture
 
-**Pipeline shape:** `fetchers/` (one module per data source) → `store/sqlite_store.py` (upsert into SQLite, keyed by a stable run_id) → `writers/` (one module per Excel sheet, reads back from the store) → `workbook_writer.py` assembles the final `.xlsx`. `src/main.py` orchestrates `sync` (fetch+store) and `export` (store+write) as separate phases — `all` just runs both.
+**Pipeline shape:** `fetchers/` (one module per data source) → `store/` (`SqliteStore` = per-domain mixins over `_base.py`; DDL/views in `_schema.py`; one SQLite DB per tenant kept across runs) → `writers/` (one module per Excel sheet, reads back from the store) → `workbook_writer.py` assembles the final `.xlsx`. `src/main.py` orchestrates `sync` (fetch+store) and `export` (store+write) as separate phases — `all` just runs both.
 
 **Datasource config is declarative.** `config/datasources.py` defines an ordered list (`_DEFS`) of datasources, each mapping an env-var prefix (e.g. `LOG_ANALYTICS`) to its auth requirements and extra config keys. Adding a new live API source means adding an entry there plus a case in `cmd_sync()` in `src/main.py` — not writing new plumbing.
 
@@ -62,6 +62,9 @@ There is no test suite, linter, or type-checker configured in this repo (no `tes
 **Bot Framework agent** (`src/agent/`) is a separate conversational front-end: `bot.py` runs a per-turn agentic loop (Azure OpenAI ↔ MCP tool calls) using tools fetched live from the deployed MCP SSE endpoint via `mcp_tools.py`. Conversation history is in-memory per conversation ID (`bot.py` notes this needs a Redis/Cosmos backing store for multi-replica deployments).
 
 ## Conventions worth knowing
+
+- Every store upsert starts with `self._begin_import(table, rows, snapshot=...)` inside its transaction: `snapshot=True` for point-in-time exports (table is cleared and reloaded), `False` for date-keyed history (merged by key). New CSV imports must pick one — a missing call means stale rows accumulate across months.
+- Store UPNs through `_upn()` (lower-cased); `_upsert_dim_user` does this itself. Schema changes to existing tables need a step in `src/store/_migrations.py` plus a new `SCHEMA_VERSION`.
 
 - Settings (`config/settings.py`) load from `.env` via `python-dotenv` at import time — order of imports matters when a script needs a non-default env file (see `--env` handling above).
 - `_resolve_glob` in `config/settings.py` handles the "M365 Admin Center appends a timestamp to every export filename" problem — prefer wildcarding new CSV-import env vars rather than hardcoding filenames.

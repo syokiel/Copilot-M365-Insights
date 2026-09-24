@@ -26,6 +26,7 @@ def cmd_import_viva(report_dir: str) -> None:
     from src.fetchers.viva_report import VivaReportImporter
     importer = VivaReportImporter(report_dir)
     store    = SqliteStore(settings.db_path)
+    store.begin_run()
 
     print(f"Importing Viva reports from: {report_dir}")
     for label, fetch_fn, upsert_fn in [
@@ -51,6 +52,7 @@ def cmd_import_viva(report_dir: str) -> None:
         except Exception as e:
             print(f"  WARNING: {label} failed: {e}")
 
+    store.finish_run()
     store.close()
     print(f"Done. DB: {settings.db_path}")
 
@@ -68,6 +70,7 @@ def cmd_sync() -> str:
     ordered    = AuthManager.fetch_order(ds_configs)
 
     store = SqliteStore(settings.db_path)
+    store.begin_run()
 
     # Tracks whether environments were already fetched (PP Admin → Global Discovery fallback)
     envs_fetched = False
@@ -597,6 +600,13 @@ def cmd_sync() -> str:
             except Exception as e:
                 print(f"  WARNING: {label} failed: {e}")
 
+    # ── Post-import maintenance (zero-row pruning, agent ID crosswalk) ─────
+    print("\n[Finalize] pruning zero-activity Copilot rows, rebuilding agent ID crosswalk")
+    try:
+        store.finish_run()
+    except Exception as e:
+        print(f"  WARNING: finalize failed: {e}")
+
     # ── KPI snapshot ─────────────────────────────────────────────────────────
     print("\n[KPI Snapshot]")
     try:
@@ -668,6 +678,7 @@ def cmd_export(run_id: str) -> None:
     tokenomics_entitlement_per_user     = store.fetch_tokenomics_entitlement_per_user()
     xla_by_persona_journey              = store.fetch_xla_by_persona_journey()
     xla_agent_contribution              = store.fetch_agent_contribution_by_persona_journey()
+    copilot_people                      = store.fetch_copilot_people()
     m365_usage_activations_users        = store.fetch_m365_usage_activations_users()
     m365_usage_active_users_services    = store.fetch_m365_usage_active_users_services()
     m365_usage_active_users_activity    = store.fetch_m365_usage_active_users_activity()
@@ -747,6 +758,7 @@ def cmd_export(run_id: str) -> None:
         tokenomics_entitlement_per_user=tokenomics_entitlement_per_user,
         xla_by_persona_journey=xla_by_persona_journey,
         xla_agent_contribution=xla_agent_contribution,
+        copilot_people=copilot_people,
         m365_usage_activations_users=m365_usage_activations_users,
         m365_usage_active_users_services=m365_usage_active_users_services,
         m365_usage_active_users_activity=m365_usage_active_users_activity,

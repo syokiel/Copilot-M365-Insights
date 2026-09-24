@@ -90,7 +90,7 @@ always resolve to a display name.
 **M365 inventory + usage**
 - `m365_admin_agent_inventory` — full agent registry; `title_id` joins to m365_usage_agents
 - `m365_usage_agents` — 30-day rollup: active_users_licensed, responses_sent per agent
-- `m365_usage_agent_users` — per-user per-agent: username, responses_sent, last_activity_date
+- `m365_usage_agent_users` — per-user per-agent: user_principal_name, responses_sent, last_activity_date
 - `m365_usage_users` — per-user rollup across all agents
 
 **Consumption — credits AND tokens are two different measurements; report both when asked about "consumption" or "usage"**
@@ -103,7 +103,7 @@ always resolve to a display name.
 Credits (tokenomics_*) are what Copilot Studio bills against a tenant's entitlement; tokens (gen_ai_model_calls) are the raw LLM input/output volume behind that billing. A "consumption" question answered with only one of the two is incomplete — pull both unless the user asks specifically for one.
 
 **M365 Copilot adoption**
-- `viva_reports_copilot_adoption` — per-user weekly prompts by app (Word, Excel, Teams, Outlook)
+- `viva_reports_copilot_adoption` — per-user weekly prompts by app (Word, Excel, Teams, Outlook); only weeks with Copilot activity (enabled-but-idle weeks are pruned — use `dim_copilot_person` for enabled-user counts)
 - `viva_reports_copilot_impact` — per-user productivity signals (meeting hours, focus, multitasking)
 
 **Experience model**
