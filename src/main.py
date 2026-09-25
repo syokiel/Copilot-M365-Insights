@@ -693,6 +693,7 @@ def cmd_export(run_id: str) -> None:
     consumption_daily_totals            = store.fetch_consumption_daily_totals()
     consumption_daily_detail            = store.fetch_consumption_daily_detail()
     github_credits_by_person            = store.fetch_github_credits_by_person()
+    consumption_weekly_totals           = store.fetch_consumption_weekly_totals()
     viva_reports_cs_action_metrics      = store.fetch_viva_reports_cs_action_metrics()
     tokenomics_capacity_consumption     = store.fetch_tokenomics_capacity_consumption()
     tokenomics_entitlement_consumption  = store.fetch_tokenomics_entitlement_consumption()
@@ -778,6 +779,7 @@ def cmd_export(run_id: str) -> None:
         consumption_daily_totals=consumption_daily_totals,
         consumption_daily_detail=consumption_daily_detail,
         github_credits_by_person=github_credits_by_person,
+        consumption_weekly_totals=consumption_weekly_totals,
         viva_reports_cs_action_metrics=viva_reports_cs_action_metrics,
         tokenomics_capacity_consumption=tokenomics_capacity_consumption,
         tokenomics_entitlement_consumption=tokenomics_entitlement_consumption,

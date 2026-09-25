@@ -424,6 +424,28 @@ class VivaMixin:
         """).fetchall()
         return [dict(r) for r in rows]
 
+    def fetch_consumption_weekly_totals(self) -> list[dict]:
+        """Weekly (Monday-start) credits and distinct people by service from
+        the daily export — people are counted once per week, which summing
+        the daily totals can't do."""
+        rows = self._conn.execute("""
+            WITH d AS (
+                SELECT date(metric_date, '-6 days', 'weekday 1') AS week,
+                       COALESCE(NULLIF(service_name, ''), 'Unknown') AS service,
+                       person_id, total_credits_used, metric_date
+                FROM viva_consumption_person_daily_credits
+                UNION ALL
+                SELECT date(metric_date, '-6 days', 'weekday 1'), 'GitHub AI',
+                       person_id, total_credits_used, metric_date
+                FROM viva_consumption_github_credits
+            )
+            SELECT week, service, COUNT(DISTINCT person_id) AS people,
+                   COUNT(DISTINCT metric_date) AS days,
+                   ROUND(SUM(total_credits_used), 2) AS credits
+            FROM d GROUP BY week, service ORDER BY week, service
+        """).fetchall()
+        return [dict(r) for r in rows]
+
     def fetch_consumption_daily_detail(self) -> list[dict]:
         """Per-person daily M365 service credits (e.g. Cowork) with licence flag."""
         rows = self._conn.execute("""

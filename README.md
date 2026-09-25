@@ -116,13 +116,14 @@ Governance and telemetry reporting for Microsoft Copilot Studio agents across an
 | **Viva_CS_Autonomous** | Daily autonomous run summary |
 | **Viva_Copilot_Adoption** | Per-user weekly Copilot prompt counts by app (weeks with Copilot activity only) |
 | **Viva_Copilot_Impact** | Per-user productivity signals alongside Copilot activity |
-| **Tokenomics_Summary** | Credit consumption dashboard: entitlement, burn rate, top agents/users, credits by service |
+| **Tokenomics_Summary** | Credit consumption dashboard: entitlement, burn rate, top agents/users, credits by service, daily credit consumption per service (last 7 days vs previous 7) and GitHub AI credits (licensed vs unlicensed users, top users) |
 | **Tokenomics_Capacity** | Daily capacity consumption by resource/feature/channel |
 | **Tokenomics_Entitlement** | Per-environment prepaid vs PAYG entitlement burn |
 | **Tokenomics_PerAgent** | Credit consumption broken down by agent |
 | **Tokenomics_PerUser** | Credit consumption broken down by user |
 | **Tokenomics_Consumption_Detail** | Per-person, per-service credit consumption (Viva Insights Consumption export) |
 | **Credits_Daily** | Daily credits by service (M365 services such as Cowork, and GitHub AI) plus per-person daily M365 detail (Viva daily consumption export) |
+| **DailyCredit_Trends** | Daily and weekly credits per service (Cowork, GitHub AI, …) with 7-day rolling averages, people per day/week, and charts |
 | **GitHub_AI_Credits** | Per-person GitHub AI credit rollup: active days, total and average credits, Copilot licence flag |
 | **AzureMonitor_Health** | Dependency failures and exceptions from Azure Monitor |
 | **CrossRef_Summary** | Conversations with correlated OTel + Azure Monitor failures |

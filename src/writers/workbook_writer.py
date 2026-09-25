@@ -58,6 +58,7 @@ from src.writers import (
     sheet_m365_proplus_detail,
     sheet_billing_licences,
     sheet_credits_daily,
+    sheet_daily_credit_trends,
     sheet_github_credits,
 )
 
@@ -106,6 +107,7 @@ def build_workbook(
     consumption_daily_totals: list[dict] | None = None,
     consumption_daily_detail: list[dict] | None = None,
     github_credits_by_person: list[dict] | None = None,
+    consumption_weekly_totals: list[dict] | None = None,
     viva_reports_cs_action_metrics: list[dict] | None = None,
     tokenomics_capacity_consumption: list[dict] | None = None,
     tokenomics_entitlement_consumption: list[dict] | None = None,
@@ -195,6 +197,8 @@ def build_workbook(
         tokenomics_entitlement_per_user or [],
         tokenomics_capacity_consumption or [],
         viva_consumption_detail or [],
+        consumption_daily_totals or [],
+        github_credits_by_person or [],
     )
     if any(_tok) and _allowed("Tokenomics_Summary"):
         sheet_tokenomics_summary.write(
@@ -204,6 +208,8 @@ def build_workbook(
             per_user=tokenomics_entitlement_per_user or [],
             capacity=tokenomics_capacity_consumption or [],
             consumption_by_service=viva_consumption_detail or [],
+            daily_totals=consumption_daily_totals or [],
+            github_by_person=github_credits_by_person or [],
         )
 
     if billing_licences and _allowed("M365_Licence_Optimization"):
@@ -257,6 +263,7 @@ def build_workbook(
     _if("Tokenomics_PerUser",     sheet_tokenomics_entitlement_per_user.write,  tokenomics_entitlement_per_user or [])
     _if("Tokenomics_Consumption_Detail", sheet_tokenomics_consumption.write, viva_consumption_detail or [])
     _if("Credits_Daily",          sheet_credits_daily.write,            consumption_daily_totals or [], consumption_daily_detail or [])
+    _if("DailyCredit_Trends",     sheet_daily_credit_trends.write,      consumption_daily_totals or [], consumption_weekly_totals or [])
     _if("GitHub_AI_Credits",      sheet_github_credits.write,           github_credits_by_person or [])
     _if("XLA_Persona_Journey",    sheet_xla_persona_journey.write,    xla_by_persona_journey or [])
     _if("XLA_Agent_Contribution", sheet_xla_agent_contribution.write, xla_agent_contribution or [])

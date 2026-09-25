@@ -1,5 +1,5 @@
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from openpyxl.styles import Font, PatternFill
 from openpyxl.worksheet.worksheet import Worksheet
@@ -18,8 +18,12 @@ def write(
     per_user: list[dict],
     capacity: list[dict],
     consumption_by_service: list[dict] | None = None,
+    daily_totals: list[dict] | None = None,
+    github_by_person: list[dict] | None = None,
 ) -> None:
     consumption_by_service = consumption_by_service or []
+    daily_totals = daily_totals or []
+    github_by_person = github_by_person or []
 
     # ── Aggregates: entitlement ───────────────────────────────────────────────
     total_entitled  = sum(r.get("entitled_quantity")          or 0 for r in entitlement)
@@ -173,6 +177,9 @@ def write(
         for service, total in top_services:
             rows.append((f"  {service}", _fmt(total)))
 
+    rows += _daily_rows(daily_totals, _fmt)
+    rows += _github_rows(daily_totals, github_by_person, _fmt)
+
     # ── Section 3: Credit breakdown by agent ─────────────────────────────────
     rows += [
         (None, None),
@@ -305,3 +312,86 @@ def write(
                     b.fill = _GOOD_FILL
             except (ValueError, TypeError):
                 pass
+
+
+def _window_change(by_date: dict[str, float], end: str) -> tuple[float, float]:
+    """Credits in the 7 days ending `end` and the 7 days before that."""
+    end_d = date.fromisoformat(end)
+    last7 = sum(v for d, v in by_date.items() if end_d - timedelta(days=6) <= date.fromisoformat(d) <= end_d)
+    prev7 = sum(v for d, v in by_date.items()
+                if end_d - timedelta(days=13) <= date.fromisoformat(d) <= end_d - timedelta(days=7))
+    return last7, prev7
+
+
+def _change_text(last7: float, prev7: float, fmt) -> str:
+    if not prev7:
+        return f"{fmt(last7)}  (previous 7 days: none)"
+    return f"{fmt(last7)}  ({(last7 - prev7) / prev7 * 100:+.1f}% vs previous 7 days)"
+
+
+def _daily_rows(daily_totals: list[dict], fmt) -> list[tuple]:
+    """Per-service summary of the Viva daily consumption export
+    (detail in the DailyCredit_Trends and Credits_Daily tabs)."""
+    if not daily_totals:
+        return []
+    end = max(r["metric_date"] for r in daily_totals)
+    rows: list[tuple] = [
+        (None, None),
+        ("── Daily Credit Consumption (Viva daily export) ─", None),
+        ("Data range", f"{min(r['metric_date'] for r in daily_totals)}  →  {end}"),
+        ("Detail", "see DailyCredit_Trends and Credits_Daily tabs"),
+    ]
+    services = sorted({r["service"] for r in daily_totals}, key=lambda n: (n == "GitHub AI", n))
+    for service in services:
+        svc = [r for r in daily_totals if r["service"] == service]
+        by_date = {r["metric_date"]: r.get("credits") or 0.0 for r in svc}
+        total = sum(by_date.values())
+        # Each service is measured over its own coverage in the export.
+        first, last = min(by_date), max(by_date)
+        calendar_days = (date.fromisoformat(last) - date.fromisoformat(first)).days + 1
+        peak = max(svc, key=lambda r: r.get("credits") or 0)
+        last7, prev7 = _window_change(by_date, last)
+        rows += [
+            (f"  {service} — total credits", f"{fmt(total)}  ({first} → {last})"),
+            (f"  {service} — active days", f"{sum(1 for v in by_date.values() if v)} of {calendar_days}"),
+            (f"  {service} — average per day", fmt(total / calendar_days)),
+            (f"  {service} — peak day", f"{fmt(peak.get('credits') or 0.0)}  ({peak['metric_date']})"),
+            (f"  {service} — most people in a day", str(max(r.get('people') or 0 for r in svc))),
+            (f"  {service} — last 7 days", _change_text(last7, prev7, fmt)),
+        ]
+    return rows
+
+
+def _github_rows(daily_totals: list[dict], github_by_person: list[dict], fmt) -> list[tuple]:
+    """GitHub AI credit headline, licence split and top users
+    (detail in the GitHub_AI_Credits tab)."""
+    if not github_by_person:
+        return []
+    total = sum(p.get("total_credits") or 0 for p in github_by_person)
+    licensed = [p for p in github_by_person if p.get("is_copilot_licensed")]
+    unlicensed = [p for p in github_by_person if p.get("is_copilot_licensed") == 0]
+    by_date = {r["metric_date"]: r.get("credits") or 0.0 for r in daily_totals if r["service"] == "GitHub AI"}
+    rows: list[tuple] = [
+        (None, None),
+        ("── GitHub AI Credits ────────────────────────────", None),
+        ("Detail", "see GitHub_AI_Credits and DailyCredit_Trends tabs"),
+        ("Total GitHub AI credits", fmt(total)),
+        ("People using GitHub AI", str(len(github_by_person))),
+        ("Average credits per person", fmt(total / len(github_by_person))),
+        ("  M365 Copilot licensed — people / credits",
+         f"{len(licensed)}  /  {fmt(sum(p.get('total_credits') or 0 for p in licensed))}"),
+        ("  Not M365 Copilot licensed — people / credits",
+         f"{len(unlicensed)}  /  {fmt(sum(p.get('total_credits') or 0 for p in unlicensed))}"),
+    ]
+    if by_date:
+        peak_day = max(by_date, key=by_date.get)
+        last7, prev7 = _window_change(by_date, max(by_date))
+        rows += [
+            ("Peak day", f"{fmt(by_date[peak_day])}  ({peak_day})"),
+            ("Last 7 days", _change_text(last7, prev7, fmt)),
+        ]
+    rows += [(None, None), ("── Top GitHub AI Users by Credits ───────────────", None)]
+    for p in github_by_person[:10]:
+        tag = "" if p.get("is_copilot_licensed") else "  (not M365 Copilot licensed)"
+        rows.append((f"  {p['person_id']}{tag}", f"{fmt(p.get('total_credits') or 0.0)}  over {p.get('active_days')} days"))
+    return rows
