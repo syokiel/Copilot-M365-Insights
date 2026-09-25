@@ -144,9 +144,10 @@ class M365AdminMixin:
         return [dict(r) for r in rows]
 
     def fetch_m365_usage_agents_unresolved(self) -> list[dict]:
-        """Agent names with no resolved Copilot Studio GUID — either no inventory
-        match or an ambiguous one (same name, multiple bot_ids). Use this list to
-        populate imports/usage_agent_id_overrides.csv."""
+        """Usage-report agents the crosswalk couldn't resolve to a Copilot Studio
+        GUID — no inventory match, no bot_id on the matched inventory row, or an
+        ambiguous name (multiple bot_ids). Use this list to populate
+        imports/usage_agent_id_overrides.csv."""
         rows = self._conn.execute(
             """SELECT agent_id, agent_name, responses_sent, last_activity_date
                FROM m365_usage_agents

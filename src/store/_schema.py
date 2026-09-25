@@ -48,8 +48,8 @@ CREATE TABLE IF NOT EXISTS connector_calls (
     properties             TEXT
 );
 
--- pva_agents is now a compatibility VIEW over dim_agent (see Cluster A DDL
--- further down + _POST), not a physical table.
+-- pva_agents is a compatibility VIEW over dim_agent (see the agent identity
+-- DDL further down + _POST), not a physical table.
 
 CREATE TABLE IF NOT EXISTS pva_environments (
     environment_id  TEXT PRIMARY KEY,
@@ -439,8 +439,8 @@ CREATE TABLE IF NOT EXISTS viva_reports_cs_action_metrics (
     PRIMARY KEY (agent_id, action_schema_name, metric_date)
 );
 
--- viva_reports_cs_copilot_agents' data now lives in dim_agent (see Cluster A
--- DDL further down). fetch_viva_reports_cs_copilot_agents() reads from
+-- viva_reports_cs_copilot_agents' data lives in dim_agent (see the agent
+-- identity DDL further down). fetch_viva_reports_cs_copilot_agents() reads from
 -- dim_agent directly; a compatibility VIEW named viva_reports_cs_copilot_agents
 -- is also created in _POST so example SQL in the LLM prompt docs
 -- (src/agent/instructions.py) keeps working unchanged.
@@ -631,7 +631,7 @@ CREATE TABLE IF NOT EXISTS m365_usage_agents (
 -- ── Usage Agent ID Overrides — manual crosswalk for ambiguous agent names ──
 -- m365_usage_agents.agent_id uses a different ID scheme than the Copilot
 -- Studio bot GUID used by dim_agent/tokenomics, so it can't be joined
--- directly. Auto-resolution (see SqliteStore._resolve_usage_agent_ids) skips
+-- directly. The crosswalk (M365AdminMixin.rebuild_agent_xref) skips
 -- any agent_name that maps to more than one bot_id in
 -- m365_admin_agent_inventory (common when the same agent name is cloned
 -- across dev/test/prod environments). Add a row here to force the mapping —
@@ -837,8 +837,8 @@ CREATE TABLE IF NOT EXISTS m365_usage_activations_users (
 );
 
 -- m365_usage_active_users_services / _activity, and m365_usage_active_user_counts
--- are now compatibility VIEWs pivoting fact_service_usage back to their
--- original wide shape (see Cluster C DDL further down + _POST).
+-- are compatibility VIEWs pivoting fact_service_usage back to their
+-- wide shape (see the per-service usage DDL further down + _POST).
 
 CREATE TABLE IF NOT EXISTS m365_usage_active_users_detail (
     user_principal_name      TEXT PRIMARY KEY,
@@ -922,13 +922,15 @@ CREATE TABLE IF NOT EXISTS _schema_migrations (
     applied_at  TEXT NOT NULL
 );
 
--- ── Cluster A: unified agent identity (Dataverse + Viva Copilot agents) ───
--- pva_agents.agent_id and viva_reports_cs_copilot_agents.agent_id are the
--- same Copilot Studio / Dataverse agent GUID space, so both sources are
--- COALESCE-merged into one row here. pva_agents and
--- viva_reports_cs_copilot_agents are compatibility views over this table.
--- m365_admin_agent_inventory / m365_usage_agents are a DIFFERENT ID space
--- (M365 Admin "Title ID") — dim_agent_xref maps them onto bot GUIDs.
+-- ── Agent identity (Power Platform / Dataverse + Viva Copilot agents) ────
+-- Agents from Power Platform/Dataverse (bot GUIDs) and from the Viva Copilot
+-- Studio report share this table; rows with the same agent_id are
+-- COALESCE-merged. The two sources only share IDs in some tenants — Viva
+-- AgentIds are often a separate GUID space — so don't assume a Viva row has
+-- a Power Platform twin; join through dim_agent_xref.bot_id instead.
+-- m365_admin_agent_inventory / m365_usage_agents use a third ID space
+-- (M365 Admin title IDs), also mapped by dim_agent_xref.
+-- pva_agents and viva_reports_cs_copilot_agents are compatibility views.
 
 CREATE TABLE IF NOT EXISTS dim_agent (
     agent_id        TEXT PRIMARY KEY,
@@ -954,12 +956,14 @@ CREATE TABLE IF NOT EXISTS dim_agent (
     in_viva_report  INTEGER DEFAULT 0
 );
 
--- ── Cluster B: per-person weekly Copilot actions (Adoption + Impact) ──────
+-- ── Per-person weekly Copilot actions (Adoption + Impact) ────────────────
 -- ~30 of the ~44 Adoption/Impact columns are the same metric reported by
 -- both CSV exports; the rest are exclusive to one or the other. Shared and
 -- adoption/impact-exclusive *action* columns live in the first table
 -- (COALESCE-merged); Impact's work-pattern-only columns live in the second.
--- viva_reports_copilot_adoption / _impact become compatibility views.
+-- Person-weeks with no Copilot activity are pruned from the first table
+-- (dim_copilot_person keeps each person's report date span).
+-- viva_reports_copilot_adoption / _impact are compatibility views.
 
 CREATE TABLE IF NOT EXISTS fact_copilot_actions_per_person (
     person_id                          TEXT NOT NULL,
@@ -1033,12 +1037,11 @@ CREATE TABLE IF NOT EXISTS fact_copilot_work_patterns (
     PRIMARY KEY (person_id, metric_date)
 );
 
--- ── Cluster C: per-service usage counts (long format) ─────────────────────
--- m365_usage_active_users_services / _activity / m365_usage_active_user_counts
--- were three near-identical wide tables (same service list, same shape) fed
--- by three separate CSV exports. metric_source disambiguates the origin, so
--- each source only ever writes its own partition (no cross-source COALESCE
--- needed). Compatibility views pivot this back to each original wide shape.
+-- ── Per-service usage counts (long format) ────────────────────────────────
+-- Three CSV exports (services / activity / counts) report the same service
+-- list; metric_source tags which export a row came from, so each only writes
+-- its own partition. m365_usage_active_users_services / _activity /
+-- m365_usage_active_user_counts are views pivoting this back to wide shape.
 
 CREATE TABLE IF NOT EXISTS fact_service_usage (
     metric_date         TEXT NOT NULL,   -- report_date (activity/counts) or report_refresh_date (services)
@@ -1051,7 +1054,7 @@ CREATE TABLE IF NOT EXISTS fact_service_usage (
     PRIMARY KEY (metric_date, report_period, service_name, metric_source)
 );
 
--- ── Cluster D: user display-name dimension ─────────────────────────────────
+-- ── User display-name dimension ───────────────────────────────────────────
 -- One display_name per user, fed by every source that observes one. UPN-keyed
 -- tables don't store display_name themselves; their fetch_* methods LEFT JOIN
 -- it back in. All UPNs are stored lower-cased (see _base._upn).
@@ -1061,12 +1064,12 @@ CREATE TABLE IF NOT EXISTS dim_user (
     display_name         TEXT
 );
 
--- ── Cluster E: per-app activation flags (long format) ──────────────────────
+-- ── Per-app activation flags (long format) ───────────────────────────────
 -- m365_app_users and m365_usage_proplus_detail both carry boolean "is this
 -- M365 app active" flags for the overlapping app set (outlook/word/excel/
 -- powerpoint/onenote/teams). Each table keeps its own unique columns
 -- (m365_app_users: sharepoint/onedrive flags; proplus_detail: platform
--- flags) — only the overlapping per-app flags move here.
+-- flags); only the overlapping per-app flags live here.
 
 CREATE TABLE IF NOT EXISTS fact_user_app_activity (
     user_principal_name  TEXT NOT NULL,

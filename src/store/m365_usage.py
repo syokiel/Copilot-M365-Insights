@@ -300,7 +300,7 @@ class M365UsageMixin:
         return cur.rowcount
 
     def upsert_m365_usage_active_users_services(self, rows: list[dict]) -> int:
-        """m365_usage_active_users_services is now a compatibility view
+        """m365_usage_active_users_services is a compatibility view
         pivoting fact_service_usage back to its original wide shape."""
         written = 0
         with self._conn:
@@ -331,7 +331,7 @@ class M365UsageMixin:
         return [dict(r) for r in rows]
 
     def upsert_m365_usage_active_users_activity(self, rows: list[dict]) -> int:
-        """m365_usage_active_users_activity is now a compatibility view
+        """m365_usage_active_users_activity is a compatibility view
         pivoting fact_service_usage back to its original wide shape."""
         written = 0
         with self._conn:
@@ -361,7 +361,7 @@ class M365UsageMixin:
         return [dict(r) for r in rows]
 
     def upsert_m365_usage_active_user_counts(self, rows: list[dict]) -> int:
-        """m365_usage_active_user_counts is now a compatibility view
+        """m365_usage_active_user_counts is a compatibility view
         pivoting fact_service_usage back to its original wide shape."""
         written = 0
         with self._conn:

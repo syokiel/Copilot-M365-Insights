@@ -200,9 +200,9 @@ class M365AdminReportImporter:
 
         Complements the Graph-sourced fetch_copilot_usage() (per-app prompt
         counts) with per-surface last-activity dates and Copilot Chat
-        work/web prompt splits. Merged into the same m365_copilot_usage
-        table/sheet via SqliteStore.upsert_m365_usage_copilot_detail, which
-        only touches these CSV-only columns.
+        work/web prompt splits. Stored in m365_copilot_usage_csv; the
+        m365_copilot_usage view (and M365_Copilot_Usage sheet) recombines it
+        with the Graph pull.
         """
         out = []
         for r in _read(self._usage_copilot_path):

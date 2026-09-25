@@ -60,18 +60,16 @@ server = Server("agent-telemetry")
 # Database helper
 # ---------------------------------------------------------------------------
 
-# Reuse the real store's schema (DDL + view-based migrations) instead of a
-# hand-maintained subset — a hand-copied copy previously drifted out of sync
-# with sqlite_store.py (missing columns on pva_agents) and would silently
-# create a stale, non-view pva_agents table on a fresh DB that no SqliteStore
-# had ever migrated yet.
+# Reuse the real store's schema (DDL, migrations, compatibility views) instead
+# of a hand-maintained subset — a hand-copied copy previously drifted out of
+# sync with the store and created stale tables where views belong.
 from src.store.sqlite_store import SqliteStore
 
 
 def _db() -> sqlite3.Connection:
-    # Constructing SqliteStore runs the full DDL + _migrate() (idempotent),
-    # guaranteeing compatibility views (pva_agents, etc.) exist even if this
-    # is the very first process to touch settings.db_path.
+    # Constructing SqliteStore runs the DDL, any pending migrations (e.g. a
+    # downloaded DB from an older version) and the compatibility views, even if
+    # this is the very first process to touch settings.db_path.
     store = SqliteStore(settings.db_path)
     conn = store._conn
     conn.row_factory = sqlite3.Row

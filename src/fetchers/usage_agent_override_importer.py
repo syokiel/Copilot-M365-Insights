@@ -4,13 +4,14 @@ Usage Agent ID Override importer.
 Reads a static CSV that force-maps an m365_usage_agents.agent_name to its
 Copilot Studio bot GUID (agent_id in dim_agent / tokenomics_entitlement_per_agent).
 
-Needed because m365_usage_agents.agent_id (from the M365 Admin usage report)
-is a different ID scheme than the Copilot Studio bot GUID, so the two can
-only be bridged by name — and auto-resolution (SqliteStore._resolve_usage_agent_ids)
+m365_usage_agents.agent_id (from the M365 Admin usage report) is a different
+ID scheme than the Copilot Studio bot GUID. SqliteStore.rebuild_agent_xref()
+bridges them via the inventory title_id where it can, then by name — but it
 skips any agent_name that maps to more than one bot_id in
 m365_admin_agent_inventory (common when the same agent name is cloned across
-dev/test/prod environments). Use store.fetch_m365_usage_agents_unresolved()
-to find which names need an entry here.
+dev/test/prod environments). Overrides here win over both. Query
+dim_agent_xref WHERE match_method = 'unresolved' (or
+store.fetch_m365_usage_agents_unresolved()) to find names needing an entry.
 
 CSV format (imports/usage_agent_id_overrides.csv):
   agent_name, bot_id
