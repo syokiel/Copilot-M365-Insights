@@ -303,6 +303,15 @@ class KpiMixin:
                 "SELECT SUM(total_credits_used) FROM viva_consumption_person_service_credits "
                 "WHERE metric_date BETWEEN ? AND ?", _days_before(cons_end, _TRAILING_DAYS - 1), cons_end,
             ) or 0, 1)
+        gh_end = self._scalar(
+            "SELECT MAX(metric_date) FROM viva_consumption_github_credits WHERE metric_date <= ?", period_end,
+        )
+        if gh_end:
+            row = self._conn.execute(
+                "SELECT COUNT(DISTINCT person_id), SUM(total_credits_used) FROM viva_consumption_github_credits "
+                "WHERE metric_date BETWEEN ? AND ?", (_days_before(gh_end, _TRAILING_DAYS - 1), gh_end),
+            ).fetchone()
+            snap.update({"github_users": row[0], "github_credits": round(row[1] or 0, 1)})
 
         return snap
 
@@ -394,8 +403,9 @@ class KpiMixin:
         return [dict(r) for r in rows]
 
     def fetch_trend_credits_monthly(self) -> list[dict]:
-        """Monthly credit burn: Power Platform capacity consumption and Viva
-        Consumption dashboard credits."""
+        """Monthly credit burn: Power Platform capacity consumption, Viva
+        Consumption credits (weekly export), and the daily export's M365
+        service and GitHub AI credits."""
         rows = self._conn.execute("""
             WITH cap AS (
                 SELECT substr(consumption_date, 1, 7) AS month,
@@ -406,13 +416,27 @@ class KpiMixin:
                 SELECT substr(metric_date, 1, 7) AS month, SUM(total_credits_used) AS consumption_credits,
                        COUNT(DISTINCT person_id) AS consumption_people
                 FROM viva_consumption_person_service_credits GROUP BY 1
-            ), months AS (SELECT month FROM cap UNION SELECT month FROM viva)
+            ), daily AS (
+                SELECT substr(metric_date, 1, 7) AS month, SUM(total_credits_used) AS m365_daily_credits
+                FROM viva_consumption_person_daily_credits GROUP BY 1
+            ), gh AS (
+                SELECT substr(metric_date, 1, 7) AS month, SUM(total_credits_used) AS github_credits,
+                       COUNT(DISTINCT person_id) AS github_people
+                FROM viva_consumption_github_credits GROUP BY 1
+            ), months AS (
+                SELECT month FROM cap UNION SELECT month FROM viva
+                UNION SELECT month FROM daily UNION SELECT month FROM gh
+            )
             SELECT m.month,
                    ROUND(cap.billable, 1) AS capacity_billable,
                    ROUND(cap.non_billable, 1) AS capacity_non_billable,
                    ROUND(viva.consumption_credits, 1) AS consumption_credits,
-                   viva.consumption_people
+                   viva.consumption_people,
+                   ROUND(daily.m365_daily_credits, 1) AS m365_daily_credits,
+                   ROUND(gh.github_credits, 1) AS github_credits,
+                   gh.github_people
             FROM months m LEFT JOIN cap USING (month) LEFT JOIN viva USING (month)
+            LEFT JOIN daily USING (month) LEFT JOIN gh USING (month)
             WHERE m.month IS NOT NULL
             ORDER BY m.month
         """).fetchall()

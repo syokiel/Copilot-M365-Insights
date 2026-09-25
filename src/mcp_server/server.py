@@ -291,6 +291,16 @@ Per-user Microsoft 365 Copilot Chat usage (CSV import) — includes unlicensed u
 ### dim_user
 One display_name per user_principal_name, gathered from every source.
 
+### viva_consumption_person_service_credits / viva_consumption_person_daily_credits
+Per-person Copilot credits by service (Cowork, WorkIQ, ...) from the Viva Consumption exports —
+the first is WEEKLY (metric_date = week), the second DAILY. They overlap: never add them together.
+- person_id, service_name, metric_date, session_count, total_credits_used, user_limit, people_historical_id
+
+### viva_consumption_github_credits
+Daily per-person GitHub AI credits (Viva daily consumption export).
+- person_id, metric_date, total_credits_used, people_historical_id → viva_consumption_people
+  (is_copilot_licensed, organization)
+
 ### m365_usage_agent_users
 Per-user per-agent usage from the same M365 Admin rollup.
 - agent_id, user_principal_name (PK), agent_name, creator_type, responses_sent, last_activity_date
@@ -308,7 +318,8 @@ loaded that period.
   m365_agent_users/m365_active_agents/m365_agent_responses, cowork_users/cowork_tasks
 - Last 4 weeks of dated history: viva_enabled_users/viva_active_users/viva_total_actions,
   cs_sessions/cs_resolution_rate/cs_escalation_rate/cs_abandon_rate/cs_csat_avg/cs_peak_wau
-- Credits: credits_entitled/credits_prepaid/credits_payg/credits_pct_used, capacity_total/capacity_avg_daily, consumption_credits
+- Credits: credits_entitled/credits_prepaid/credits_payg/credits_pct_used, capacity_total/capacity_avg_daily, consumption_credits,
+  github_users/github_credits (last 4 weeks)
 - License/adoption: total_licenses, enabled_users, active_users, activation_rate, adoption_rate, power_users, total_prompts, avg_prompts_per_user
 - Per-workload prompts: prompts_copilot_chat/teams/outlook/excel/word/powerpoint/onenote/loop
 - Agent adoption: agent_adopters, agent_adoption_pct

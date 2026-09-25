@@ -39,7 +39,8 @@ Governance and telemetry reporting for Microsoft Copilot Studio agents across an
 | `VIVA_REPROT_CS_DIR` | Viva Insights / M365 Copilot Admin > Copilot Studio agents report > Export folder | Session metrics, topics, WAU, autonomous metrics | Folder: `AgentSessionMetrics.Csv`, `AgentTopicMetrics.Csv`, `AgentKnowledgeSourceMetrics.Csv`, `AgentAutonomousMetrics_*.Csv`, `AgentActionMetrics.Csv`, `CopilotAgent.Csv`, `AgentWeeklyActiveUsers.Csv`, `AgentExtendedMetadata.Csv` |
 | `VIVA_REPORT_ADOPTION` | Viva Insights > Copilot Adoption report > Export | Per-user weekly Copilot prompt counts by app | `Copilot Adoption Report_<Tenant>.Csv` |
 | `VIVA_REPORT_IMPACT` | Viva Insights > Copilot Impact report > Export | Per-user work-pattern signals alongside Copilot activity | `Copilot Impact_<Tenant>.Csv` |
-| `VIVA_REPORT_CONSUMPTION` | Viva Insights > Consumption > Export | Per-person Copilot credit consumption by service (enhances Tokenomics) | Folder: `PeopleMetaData.csv`, `PersonServiceCreditsMetrics.csv`, `SpendingPolicyMetadata.csv` |
+| `VIVA_REPORT_CONSUMPTION` | Viva Insights > Consumption > Export (weekly dashboard) | Per-person weekly Copilot credit consumption by service (enhances Tokenomics) | Folder: `PeopleMetaData.csv`, `PersonServiceCreditsMetrics.csv`, `SpendingPolicyMetadata.csv` |
+| `VIVA_REPORT_CONSUMPTION_DAILY` | Viva Insights > Consumption > Export (daily, incl. GitHub) | Per-person **daily** M365 service credits (e.g. Cowork) and GitHub AI credits → Credits_Daily, GitHub_AI_Credits, KPI GitHub metrics. Kept separate from the weekly export so the two aren't double-counted | Folder: `PeopleMetaData.csv`, `PersonM365CreditsMetrics.csv`, `PersonGitHubCreditsMetrics.csv`, `M365SpendingPolicyMetaData.csv` |
 | `M365ADMIN_AGENT_INVENTORY` | M365 Admin Center > Copilot > Agents > All agents > Export | Full agent registry with metadata, permissions, instructions | `Agents_YYYY-MM-DD_HH_MM_SS.csv` |
 | `M365ADMIN_USAGE_REPORT_AGENTS` | M365 Admin > Reports > Usage > M365 Copilot > Agents > Export (Agents tab) | 30-day per-agent active users and responses | `DeclarativeAgents_Agents_30_YYYY-MM-DDTHH-MM-SS.csv` |
 | `M365ADMIN_USAGE_REPORT_AGENTUSERS` | M365 Admin > Reports > Usage > M365 Copilot > Agents > Export (Users & Agents tab) | 30-day per-user per-agent activity | `DeclarativeAgents_Users___agents_30_YYYY-MM-DDTHH-MM-SS.csv` |
@@ -106,7 +107,7 @@ Governance and telemetry reporting for Microsoft Copilot Studio agents across an
 | **M365_ProPlus_Platforms** | User counts by platform (Windows/Mac/mobile/web) |
 | **M365_ProPlus_Counts** | User counts per M365 App |
 | **M365_ProPlus_Users** | Per-user app/platform usage detail |
-| **Billing_Licences** | Tenant license inventory: total/assigned/expired counts per SKU |
+| **Billing_Licences** | Tenant licence inventory (product list): total / assigned / available / % assigned / expired per SKU |
 | **Teams_Usage** | Teams chat, meeting, and call activity |
 | **Viva_Person_Insights** | Person-level Viva productivity signals |
 | **Viva_CS_Sessions** | Daily session outcomes and CSAT per agent |
@@ -121,6 +122,8 @@ Governance and telemetry reporting for Microsoft Copilot Studio agents across an
 | **Tokenomics_PerAgent** | Credit consumption broken down by agent |
 | **Tokenomics_PerUser** | Credit consumption broken down by user |
 | **Tokenomics_Consumption_Detail** | Per-person, per-service credit consumption (Viva Insights Consumption export) |
+| **Credits_Daily** | Daily credits by service (M365 services such as Cowork, and GitHub AI) plus per-person daily M365 detail (Viva daily consumption export) |
+| **GitHub_AI_Credits** | Per-person GitHub AI credit rollup: active days, total and average credits, Copilot licence flag |
 | **AzureMonitor_Health** | Dependency failures and exceptions from Azure Monitor |
 | **CrossRef_Summary** | Conversations with correlated OTel + Azure Monitor failures |
 
@@ -246,6 +249,7 @@ VIVA_REPROT_CS_DIR=imports/June2026/CS+Agents+Report_YOKIEL
 VIVA_REPORT_ADOPTION=imports/June2026/Copilot Adoption Report_YOKIEL.Csv
 VIVA_REPORT_IMPACT=imports/June2026/Copilot Impact_YOKIEL.Csv
 VIVA_REPORT_CONSUMPTION=imports/June2026/ConsumptionDashboard-Weekly
+VIVA_REPORT_CONSUMPTION_DAILY=imports/June2026/Consumption_Daily
 
 # M365 Admin Center
 M365ADMIN_AGENT_INVENTORY=imports/June2026/Agents_2026-06-12_16_10_35.csv

@@ -5,11 +5,19 @@ Reads the "Consumption" export folder from Viva Insights and converts it to
 lists of dicts for the SQLite store. Feeds/enhances the Tokenomics_* sheets
 with per-person, per-service credit consumption.
 
-Supported files (resolved case-insensitively from the given directory, same
-flat/nested/rglob resolution as VivaReportImporter):
-  PeopleMetaData.csv               → viva_consumption_people
-  PersonServiceCreditsMetrics.csv  → viva_consumption_person_service_credits
-  SpendingPolicyMetadata.csv       → viva_consumption_spending_policy
+Handles both export layouts Viva produces (resolved case-insensitively from
+the given directory, same flat/nested/rglob resolution as VivaReportImporter);
+files a folder doesn't contain are skipped:
+
+  Weekly "ConsumptionDashboard-Weekly" export:
+    PeopleMetaData.csv               → viva_consumption_people
+    PersonServiceCreditsMetrics.csv  → viva_consumption_person_service_credits (weekly)
+    SpendingPolicyMetadata.csv       → viva_consumption_spending_policy
+  Daily consumption export:
+    PeopleMetaData.csv               → viva_consumption_people (no org/function columns)
+    PersonM365CreditsMetrics.csv     → viva_consumption_person_daily_credits
+    PersonGitHubCreditsMetrics.csv   → viva_consumption_github_credits
+    M365SpendingPolicyMetaData.csv   → viva_consumption_spending_policy
 """
 import csv
 import re
@@ -54,17 +62,26 @@ def _bool(v) -> int:
 class VivaConsumptionImporter:
     """Reads Viva Insights Consumption CSV exports from a directory on disk."""
 
+    # key → accepted file names (first match wins)
     _FILES = {
-        'people':                'PeopleMetaData.csv',
-        'person_service_credits': 'PersonServiceCreditsMetrics.csv',
-        'spending_policy':       'SpendingPolicyMetadata.csv',
+        'people':                 ('PeopleMetaData.csv',),
+        'person_service_credits': ('PersonServiceCreditsMetrics.csv',),
+        'person_daily_credits':   ('PersonM365CreditsMetrics.csv',),
+        'github_credits':         ('PersonGitHubCreditsMetrics.csv',),
+        'spending_policy':        ('SpendingPolicyMetadata.csv', 'M365SpendingPolicyMetaData.csv'),
     }
 
     def __init__(self, report_dir: str) -> None:
         self._dir = Path(report_dir)
 
     def _read(self, key: str) -> list[dict]:
-        filename = self._FILES[key]
+        for filename in self._FILES[key]:
+            rows = self._read_file(filename)
+            if rows:
+                return rows
+        return []
+
+    def _read_file(self, filename: str) -> list[dict]:
         stem = Path(filename).stem
 
         candidates = [
@@ -102,8 +119,25 @@ class VivaConsumptionImporter:
         return out
 
     def fetch_person_service_credits(self) -> list[dict]:
+        return self._service_credits('person_service_credits')
+
+    def fetch_person_daily_credits(self) -> list[dict]:
+        return self._service_credits('person_daily_credits')
+
+    def fetch_github_credits(self) -> list[dict]:
         out = []
-        for r in self._read('person_service_credits'):
+        for r in self._read('github_credits'):
+            out.append({
+                'person_id':            r.get('PersonId', ''),
+                'metric_date':          _norm_date(r.get('MetricDate', '')),
+                'total_credits_used':   _float(r.get('Total GitHub AI Credits used')),
+                'people_historical_id': r.get('PeopleHistoricalId', ''),
+            })
+        return out
+
+    def _service_credits(self, key: str) -> list[dict]:
+        out = []
+        for r in self._read(key):
             out.append({
                 'person_id':             r.get('PersonId', ''),
                 'service_id':            r.get('ServiceId', ''),

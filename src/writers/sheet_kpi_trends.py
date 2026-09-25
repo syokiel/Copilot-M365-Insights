@@ -34,13 +34,19 @@ _SECTIONS = [
      [("Agent sessions & weekly users", ["sessions", "engaged", "peak_wau"]),
       ("Session outcomes (%)", ["resolution_rate", "escalation_rate", "abandon_rate"])]),
     ("Credits — monthly",
-     "Capacity = Power Platform Copilot Studio capacity consumption; Consumption = Viva Consumption dashboard.",
+     "Capacity = Power Platform Copilot Studio capacity consumption; Consumption = Viva Consumption dashboard "
+     "(weekly export); M365 Daily and GitHub AI = Viva daily consumption export.",
      "credits_monthly",
      [("Month", "month", None), ("Capacity (billable)", "capacity_billable", "#,##0.0"),
       ("Capacity (non-billable)", "capacity_non_billable", "#,##0.0"),
       ("Consumption Credits", "consumption_credits", "#,##0.0"),
-      ("Consumption People", "consumption_people", "#,##0")],
-     [("Credits consumed per month", ["capacity_billable", "capacity_non_billable", "consumption_credits"])]),
+      ("Consumption People", "consumption_people", "#,##0"),
+      ("M365 Daily Credits", "m365_daily_credits", "#,##0.0"),
+      ("GitHub AI Credits", "github_credits", "#,##0.0"),
+      ("GitHub AI People", "github_people", "#,##0")],
+     [("Credits consumed per month", ["capacity_billable", "capacity_non_billable",
+                                      "consumption_credits", "m365_daily_credits"]),
+      ("GitHub AI credits per month", ["github_credits"])]),
     ("M365 services — monthly peak daily active users",
      "From the Office 365 active user counts export.",
      "services_monthly",
@@ -82,6 +88,9 @@ def write(ws: Worksheet, trends: dict[str, list[dict]]) -> None:
             fields = [c[1] for c in cols]
             categories = Reference(ws, min_col=1, min_row=header_row + 1, max_row=last_row)
             for chart_title, series in charts:
+                series = [f for f in series if any(rec.get(f) is not None for rec in data)]
+                if not series:
+                    continue
                 chart = LineChart()
                 chart.title = chart_title
                 chart.height, chart.width = 7.5, 16

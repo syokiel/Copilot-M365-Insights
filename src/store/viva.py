@@ -320,15 +320,22 @@ class VivaMixin:
         return [dict(r) for r in rows]
 
     def upsert_viva_consumption_people(self, rows: list[dict]) -> int:
+        """People dimension shared by the weekly and daily consumption exports.
+        Merged, not replaced: the daily export's file has no organization /
+        function columns, so it must not blank what the weekly one supplied."""
         written = 0
         with self._conn:
-            self._begin_import('viva_consumption_people', rows, snapshot=True)
+            self._begin_import('viva_consumption_people', rows, snapshot=False)
             for r in rows:
                 cur = self._conn.execute(
-                    """INSERT OR REPLACE INTO viva_consumption_people VALUES (?,?,?,?)""",
+                    """INSERT INTO viva_consumption_people VALUES (?,?,?,?)
+                    ON CONFLICT(people_historical_id) DO UPDATE SET
+                        organization        = COALESCE(excluded.organization, viva_consumption_people.organization),
+                        function_type       = COALESCE(excluded.function_type, viva_consumption_people.function_type),
+                        is_copilot_licensed = excluded.is_copilot_licensed""",
                     (
-                        r.get('people_historical_id'), r.get('organization'),
-                        r.get('function_type'), r.get('is_copilot_licensed'),
+                        r.get('people_historical_id'), r.get('organization') or None,
+                        r.get('function_type') or None, r.get('is_copilot_licensed'),
                     ),
                 )
                 written += cur.rowcount
@@ -356,7 +363,8 @@ class VivaMixin:
     def upsert_viva_consumption_spending_policy(self, rows: list[dict]) -> int:
         written = 0
         with self._conn:
-            self._begin_import('viva_consumption_spending_policy', rows, snapshot=True)
+            # Merged: both consumption exports carry the same policy list.
+            self._begin_import('viva_consumption_spending_policy', rows, snapshot=False)
             for r in rows:
                 cur = self._conn.execute(
                     """INSERT OR REPLACE INTO viva_consumption_spending_policy VALUES (?,?,?,?,?)""",
@@ -367,6 +375,82 @@ class VivaMixin:
                 )
                 written += cur.rowcount
         return written
+
+    def upsert_viva_consumption_person_daily_credits(self, rows: list[dict]) -> int:
+        written = 0
+        with self._conn:
+            self._begin_import('viva_consumption_person_daily_credits', rows, snapshot=False)
+            for r in rows:
+                cur = self._conn.execute(
+                    """INSERT OR REPLACE INTO viva_consumption_person_daily_credits VALUES
+                    (?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        r.get('person_id'), r.get('service_id'), r.get('service_name'),
+                        r.get('spending_policy_id'), r.get('metric_date'),
+                        r.get('session_count'), r.get('spending_policy_limit'),
+                        r.get('total_credits_used'), r.get('user_limit'),
+                        r.get('people_historical_id'),
+                    ),
+                )
+                written += cur.rowcount
+        return written
+
+    def upsert_viva_consumption_github_credits(self, rows: list[dict]) -> int:
+        written = 0
+        with self._conn:
+            self._begin_import('viva_consumption_github_credits', rows, snapshot=False)
+            for r in rows:
+                cur = self._conn.execute(
+                    """INSERT OR REPLACE INTO viva_consumption_github_credits VALUES (?,?,?,?)""",
+                    (r.get('person_id'), r.get('metric_date'),
+                     r.get('total_credits_used'), r.get('people_historical_id')),
+                )
+                written += cur.rowcount
+        return written
+
+    def fetch_consumption_daily_totals(self) -> list[dict]:
+        """Daily credits by service from the daily export: M365 services
+        (Cowork, WorkIQ, …) plus GitHub AI."""
+        rows = self._conn.execute("""
+            SELECT metric_date, COALESCE(NULLIF(service_name, ''), 'Unknown') AS service,
+                   COUNT(DISTINCT person_id) AS people, SUM(session_count) AS sessions,
+                   ROUND(SUM(total_credits_used), 2) AS credits
+            FROM viva_consumption_person_daily_credits GROUP BY 1, 2
+            UNION ALL
+            SELECT metric_date, 'GitHub AI', COUNT(DISTINCT person_id), NULL,
+                   ROUND(SUM(total_credits_used), 2)
+            FROM viva_consumption_github_credits GROUP BY 1
+            ORDER BY 1, 2
+        """).fetchall()
+        return [dict(r) for r in rows]
+
+    def fetch_consumption_daily_detail(self) -> list[dict]:
+        """Per-person daily M365 service credits (e.g. Cowork) with licence flag."""
+        rows = self._conn.execute("""
+            SELECT c.metric_date, c.person_id, c.service_name, c.session_count,
+                   c.total_credits_used, c.user_limit, s.name AS spending_policy,
+                   p.organization, p.is_copilot_licensed
+            FROM viva_consumption_person_daily_credits c
+            LEFT JOIN viva_consumption_people p ON p.people_historical_id = c.people_historical_id
+            LEFT JOIN viva_consumption_spending_policy s ON s.spending_policy_id = c.spending_policy_id
+            ORDER BY c.metric_date DESC, c.total_credits_used DESC
+        """).fetchall()
+        return [dict(r) for r in rows]
+
+    def fetch_github_credits_by_person(self) -> list[dict]:
+        """Per-person GitHub AI credit rollup across all imported days."""
+        rows = self._conn.execute("""
+            SELECT g.person_id, MAX(p.is_copilot_licensed) AS is_copilot_licensed,
+                   MAX(p.organization) AS organization,
+                   COUNT(*) AS active_days, ROUND(SUM(g.total_credits_used), 2) AS total_credits,
+                   ROUND(AVG(g.total_credits_used), 2) AS avg_credits_per_day,
+                   MIN(g.metric_date) AS first_date, MAX(g.metric_date) AS last_date
+            FROM viva_consumption_github_credits g
+            LEFT JOIN viva_consumption_people p ON p.people_historical_id = g.people_historical_id
+            GROUP BY g.person_id
+            ORDER BY total_credits DESC
+        """).fetchall()
+        return [dict(r) for r in rows]
 
     def fetch_viva_consumption_detail(self) -> list[dict]:
         """Person/service/date credit rows joined with org/function context.

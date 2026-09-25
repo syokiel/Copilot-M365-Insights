@@ -9,6 +9,7 @@ from src.store._schema import (
     _COPILOT_USAGE_CSV_COLUMNS,
     _COPILOT_USAGE_GRAPH_COUNT_COLUMNS,
     _KPI_V3_COLUMNS,
+    _KPI_V4_COLUMNS,
     _VIEW_NAMES,
 )
 
@@ -158,8 +159,27 @@ def migrate_to_v3(store) -> None:
         raise
 
 
+def migrate_to_v4(store) -> None:
+    """GitHub AI credit KPIs. The new daily-credit tables need no step: the
+    DDL creates them (CREATE TABLE IF NOT EXISTS) on every start."""
+    conn = store._conn
+    conn.commit()
+    conn.execute("BEGIN")
+    try:
+        existing = _columns(conn, "kpi_snapshots")
+        for name, sql_type in _KPI_V4_COLUMNS:
+            if name not in existing:
+                conn.execute(f"ALTER TABLE kpi_snapshots ADD COLUMN {name} {sql_type}")
+        store._mark_migration_applied("schema_v4")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+
+
 # Applied in order; a new database starts with all of them marked applied.
 MIGRATIONS = (
     ("schema_v2", migrate_to_v2),
     ("schema_v3", migrate_to_v3),
+    ("schema_v4", migrate_to_v4),
 )

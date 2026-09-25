@@ -322,7 +322,10 @@ CREATE TABLE IF NOT EXISTS kpi_snapshots (
     credits_pct_used     REAL,
     capacity_total       REAL,
     capacity_avg_daily   REAL,
-    consumption_credits  REAL
+    consumption_credits  REAL,
+    -- schema_v4: GitHub AI credits (last 4 weeks of data)
+    github_users         INTEGER,
+    github_credits       REAL
 );
 
 -- ── Viva / Copilot Studio report tables ───────────────────────────────────
@@ -819,6 +822,33 @@ CREATE TABLE IF NOT EXISTS viva_consumption_spending_policy (
     included_services   TEXT
 );
 
+-- Daily per-person credits from the newer Viva Consumption export
+-- (PersonM365CreditsMetrics.csv). Kept apart from the weekly
+-- viva_consumption_person_service_credits: both report the same Cowork usage
+-- at different granularity, so combining them would double-count.
+CREATE TABLE IF NOT EXISTS viva_consumption_person_daily_credits (
+    person_id             TEXT NOT NULL,
+    service_id            TEXT NOT NULL,
+    service_name          TEXT,
+    spending_policy_id    TEXT,
+    metric_date           TEXT NOT NULL,
+    session_count         INTEGER,
+    spending_policy_limit REAL,
+    total_credits_used    REAL,
+    user_limit            REAL,
+    people_historical_id  TEXT,
+    PRIMARY KEY (person_id, service_id, metric_date)
+);
+
+-- Daily per-person GitHub AI credits (PersonGitHubCreditsMetrics.csv).
+CREATE TABLE IF NOT EXISTS viva_consumption_github_credits (
+    person_id             TEXT NOT NULL,
+    metric_date           TEXT NOT NULL,
+    total_credits_used    REAL,
+    people_historical_id  TEXT,
+    PRIMARY KEY (person_id, metric_date)
+);
+
 -- ── M365 Admin Center — Office 365 / M365 Apps Usage Reports (CSV import) ─
 
 CREATE TABLE IF NOT EXISTS m365_usage_activations_users (
@@ -1264,6 +1294,7 @@ CREATE INDEX IF NOT EXISTS idx_tokenomics_per_agent_env   ON tokenomics_entitlem
 CREATE INDEX IF NOT EXISTS idx_tokenomics_per_user_user   ON tokenomics_entitlement_per_user(user_id);
 CREATE INDEX IF NOT EXISTS idx_viva_consumption_credits_service ON viva_consumption_person_service_credits(service_name);
 CREATE INDEX IF NOT EXISTS idx_viva_consumption_credits_people  ON viva_consumption_person_service_credits(people_historical_id);
+CREATE INDEX IF NOT EXISTS idx_viva_consumption_github_date     ON viva_consumption_github_credits(metric_date);
 CREATE INDEX IF NOT EXISTS idx_copilot_actions_date   ON fact_copilot_actions_per_person(metric_date);
 
 CREATE VIEW IF NOT EXISTS pva_agents AS
@@ -1364,4 +1395,10 @@ _KPI_V3_COLUMNS = (
     ("capacity_total", "REAL"),
     ("capacity_avg_daily", "REAL"),
     ("consumption_credits", "REAL"),
+)
+
+# kpi_snapshots columns added in schema_v4.
+_KPI_V4_COLUMNS = (
+    ("github_users", "INTEGER"),
+    ("github_credits", "REAL"),
 )

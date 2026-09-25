@@ -445,14 +445,24 @@ def cmd_sync() -> str:
                 print(f"  WARNING: {label} failed: {e}")
 
     # ── Viva Consumption auto-import (enhances Tokenomics_* sheets) ─────────
-    if settings.viva_report_consumption:
-        print(f"\n[Viva Consumption] importing from {settings.viva_report_consumption}")
-        from src.fetchers.viva_consumption_report import VivaConsumptionImporter
-        vconsumption = VivaConsumptionImporter(settings.viva_report_consumption)
+    # Two export layouts: the weekly dashboard (VIVA_REPORT_CONSUMPTION) and
+    # the daily export with GitHub AI credits (VIVA_REPORT_CONSUMPTION_DAILY).
+    # The importer handles both; files a folder doesn't contain are skipped.
+    from src.fetchers.viva_consumption_report import VivaConsumptionImporter
+    for consumption_label, consumption_dir in [
+        ("Viva Consumption", settings.viva_report_consumption),
+        ("Viva Consumption (daily)", settings.viva_report_consumption_daily),
+    ]:
+        if not consumption_dir:
+            continue
+        print(f"\n[{consumption_label}] importing from {consumption_dir}")
+        vconsumption = VivaConsumptionImporter(consumption_dir)
         for label, fetch_fn, upsert_fn in [
-            ("people",                vconsumption.fetch_people,                store.upsert_viva_consumption_people),
+            ("people",                 vconsumption.fetch_people,                 store.upsert_viva_consumption_people),
             ("person-service credits", vconsumption.fetch_person_service_credits, store.upsert_viva_consumption_person_service_credits),
-            ("spending policy",       vconsumption.fetch_spending_policy,       store.upsert_viva_consumption_spending_policy),
+            ("daily M365 credits",     vconsumption.fetch_person_daily_credits,   store.upsert_viva_consumption_person_daily_credits),
+            ("GitHub AI credits",      vconsumption.fetch_github_credits,         store.upsert_viva_consumption_github_credits),
+            ("spending policy",        vconsumption.fetch_spending_policy,        store.upsert_viva_consumption_spending_policy),
         ]:
             try:
                 items = fetch_fn()
@@ -680,6 +690,9 @@ def cmd_export(run_id: str) -> None:
     m365_connectors_usage               = store.fetch_m365_connectors_usage()
     m365_connectors_users               = store.fetch_m365_connectors_users()
     viva_consumption_detail             = store.fetch_viva_consumption_detail()
+    consumption_daily_totals            = store.fetch_consumption_daily_totals()
+    consumption_daily_detail            = store.fetch_consumption_daily_detail()
+    github_credits_by_person            = store.fetch_github_credits_by_person()
     viva_reports_cs_action_metrics      = store.fetch_viva_reports_cs_action_metrics()
     tokenomics_capacity_consumption     = store.fetch_tokenomics_capacity_consumption()
     tokenomics_entitlement_consumption  = store.fetch_tokenomics_entitlement_consumption()
@@ -762,6 +775,9 @@ def cmd_export(run_id: str) -> None:
         m365_connectors_usage=m365_connectors_usage,
         m365_connectors_users=m365_connectors_users,
         viva_consumption_detail=viva_consumption_detail,
+        consumption_daily_totals=consumption_daily_totals,
+        consumption_daily_detail=consumption_daily_detail,
+        github_credits_by_person=github_credits_by_person,
         viva_reports_cs_action_metrics=viva_reports_cs_action_metrics,
         tokenomics_capacity_consumption=tokenomics_capacity_consumption,
         tokenomics_entitlement_consumption=tokenomics_entitlement_consumption,

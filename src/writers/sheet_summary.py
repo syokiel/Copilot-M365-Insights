@@ -251,6 +251,8 @@ _KPI_SECTIONS = [
         ("PAYG Consumed", "credits_payg", "dec"),
         ("% Entitlement Used", "credits_pct_used", "pct"),
         ("Viva Consumption Credits (last 4 weeks)", "consumption_credits", "dec"),
+        ("GitHub AI Users (last 4 weeks)", "github_users", "int"),
+        ("GitHub AI Credits (last 4 weeks)", "github_credits", "dec"),
     ]),
 ]
 

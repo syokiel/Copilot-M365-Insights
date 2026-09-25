@@ -94,6 +94,9 @@ class Settings:
     # consumption by service (PeopleMetaData.csv, PersonServiceCreditsMetrics.csv,
     # SpendingPolicyMetadata.csv). Feeds/enhances the Tokenomics_* sheets.
     viva_report_consumption: str = ""
+    # Viva daily consumption export folder (PersonM365CreditsMetrics.csv,
+    # PersonGitHubCreditsMetrics.csv, M365SpendingPolicyMetaData.csv, ...).
+    viva_report_consumption_daily: str = ""
     # ── M365 Admin Center CSV exports ────────────────────────────────────────
     m365_admin_agent_inventory: str = ""
     # M365 Usage reports
@@ -185,6 +188,9 @@ class Settings:
         self.viva_report_impact   = os.getenv("VIVA_REPORT_IMPACT",   self.viva_report_impact).strip()
         self.viva_report_consumption = os.getenv(
             "VIVA_REPORT_CONSUMPTION", self.viva_report_consumption
+        ).strip()
+        self.viva_report_consumption_daily = os.getenv(
+            "VIVA_REPORT_CONSUMPTION_DAILY", self.viva_report_consumption_daily
         ).strip()
         self.m365_admin_agent_inventory   = os.getenv("M365ADMIN_AGENT_INVENTORY",   self.m365_admin_agent_inventory).strip()
         self.m365_usage_report_agents     = (

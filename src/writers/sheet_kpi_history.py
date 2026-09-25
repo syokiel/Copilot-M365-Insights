@@ -94,6 +94,8 @@ _SECTIONS = [
         ("Avg Daily Burn", "capacity_avg_daily", "dec"),
         ("Days Remaining", "_days_remaining", "int"),
         ("Viva Consumption (last 4 wks)", "consumption_credits", "dec"),
+        ("GitHub AI Users (last 4 wks)", "github_users", "int"),
+        ("GitHub AI Credits (last 4 wks)", "github_credits", "dec"),
     ]),
 ]
 
