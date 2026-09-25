@@ -71,9 +71,10 @@ Governance and telemetry reporting for Microsoft Copilot Studio agents across an
 
 | Sheet | Contents |
 |---|---|
-| **Summary** | Tenant-wide KPI snapshot |
+| **Copilot_Adoption_Summary** | Tenant-wide KPIs for the latest period vs the previous one, plus when each source was last loaded |
 | **Cowork_Summary** | Cowork task activity and credit consumption dashboard |
-| **KPI History** | KPI trend over time |
+| **KPI History** | One row per data period (month): Copilot users/prompts, Copilot Chat, Viva adoption, agent usage, Copilot Studio outcomes, credits — with trend charts |
+| **KPI Trends** | Weekly/monthly series from the stored history (Copilot activity, agent sessions, credits, M365 service usage) with charts — works from a single import |
 | **XLA_Measurements** | XLA scorecard computed from session metrics |
 | **XLA_Persona_Journey** | XLA scores aggregated by persona and journey (colour-coded) |
 | **XLA_Agent_Contribution** | Per-agent breakdown of sessions, completion, escalation by persona/journey |
@@ -284,7 +285,7 @@ Paths accept `*` wildcards; the most recently modified match is used, so the tim
 For multi-tenant use, keep a separate `.env` file per tenant and pass it with `--env`:
 
 ```bash
-python -m src.main --env .env.stryker all
+python -m src.main --env .env.<tenant> all
 ```
 
 Per-datasource auth overrides (e.g. `LOG_ANALYTICS_CLIENT_ID`) are documented in `config/.env.example`.
@@ -328,6 +329,10 @@ Keep **one SQLite database per tenant** (`DB_PATH`) and re-run `sync` each month
 - User principal names are stored lower-cased in every table so sources with different casing join correctly.
 - Existing databases are upgraded in place automatically the first time a newer version opens them (including the copy the deployed MCP server downloads). A very large tenant DB can take ~15–20 s on that first open.
 
+### KPI history
+
+Each sync writes one `kpi_snapshots` row for the **data period** its exports cover (`YYYY-MM`, from the latest report date in the loaded files — override with `KPI_PERIOD`). Re-running a month replaces its row, so running a tenant's months in chronological order rebuilds KPI History. Metrics from point-in-time exports are only recorded for the period whose run loaded them (a month without a Cowork export shows a blank, not last month's number); Viva and Copilot Studio metrics cover the last 4 weeks of data up to the period's date. The summary sheet compares the latest period with the previous one and lists which sources were carried forward from an earlier run.
+
 A typical monthly refresh for a tenant:
 
 ```bash
@@ -353,11 +358,14 @@ Add to your `.mcp.json`:
   "mcpServers": {
     "agent-telemetry": {
       "command": "python",
-      "args": ["-m", "src.mcp_server.server"]
+      "args": ["-m", "src.mcp_server.server"],
+      "env": { "DB_PATH": "agent_telemetry.db", "MCP_TRANSPORT": "stdio" }
     }
   }
 }
 ```
+
+For several tenants, add one entry per tenant database (e.g. `agent-telemetry-<tenant>` with `DB_PATH=agent_telemetry_<tenant>.db`); each server reads only its own tenant's data.
 
 ### Deployed (Azure Container Apps / HTTP)
 

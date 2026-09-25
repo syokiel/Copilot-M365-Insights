@@ -17,6 +17,8 @@ def write(
     viva_reports_cs_wau: list[dict] | None = None,
     viva_reports_cs_autonomous: list[dict] | None = None,
     viva_reports_cs_agents: dict[str, dict] | None = None,
+    previous_kpi_snapshot: dict | None = None,
+    import_status: list[dict] | None = None,
 ) -> None:
     prod_events = [e for e in events if not e.get("DesignMode")]
     prod_connectors = [c for c in connector_calls if not c.get("DesignMode")]
@@ -88,30 +90,7 @@ def write(
         rows.append(("  No AI model call data in this window", None))
 
     if kpi_snapshot:
-        pct = lambda v: f"{v:.1f}%" if v is not None else "—"  # noqa: E731
-        rows += [
-            (None, None),
-            ("── M365 Copilot KPIs ─────────────────────────", None),
-            ("Total Licenses",       kpi_snapshot.get("total_licenses") or "—"),
-            ("Enabled Users",        kpi_snapshot.get("enabled_users")),
-            ("Active Users",         kpi_snapshot.get("active_users")),
-            ("Activation Rate",      pct(kpi_snapshot.get("activation_rate"))),
-            ("Adoption Rate",        pct(kpi_snapshot.get("adoption_rate"))),
-            ("Power Users",          kpi_snapshot.get("power_users")),
-            ("Total Prompts",        kpi_snapshot.get("total_prompts")),
-            ("Avg Prompts / User",   kpi_snapshot.get("avg_prompts_per_user")),
-            (None, None),
-            ("── Agent KPIs ────────────────────────────────", None),
-            ("Total Agents",         kpi_snapshot.get("total_agents")),
-            ("Active Agents",        kpi_snapshot.get("active_agents")),
-            ("Utilization Rate",     pct(kpi_snapshot.get("utilization_rate"))),
-            ("Production Agents",    kpi_snapshot.get("production_agents")),
-            ("Non-Prod Agents",      kpi_snapshot.get("non_prod_agents")),
-            ("Ownership Coverage",   pct(kpi_snapshot.get("ownership_pct"))),
-            ("Total Conversations",  kpi_snapshot.get("total_conversations")),
-            ("Agent Adopters",       kpi_snapshot.get("agent_adopters")),
-            ("Agent Adoption %",     pct(kpi_snapshot.get("agent_adoption_pct"))),
-        ]
+        rows += _kpi_rows(kpi_snapshot, previous_kpi_snapshot)
 
     # ── Viva CS (Copilot Studio analytics) ────────────────────────────────────
     rows.append((None, None))
@@ -169,9 +148,24 @@ def write(
             ("Autonomous success rate",   f"{total_succ/total_runs*100:.1f}%" if total_runs else "—"),
         ]
 
-    headers = ["Metric", "Value"]
+    if import_status:
+        rows.append((None, None))
+        rows.append(("── Data as of (latest load per source) ───────", None))
+        for st in import_status:
+            rows.append((
+                f"  {st['table_name']}",
+                f"{st['row_count']:,} rows · {(st['imported_at'] or '')[:10]} · {st['mode']}",
+                "current" if st["current_run"] else "carried forward from an earlier run",
+            ))
+
+    prev_label = "Previous"
+    if previous_kpi_snapshot:
+        prev_label = f"Previous ({_period_label(previous_kpi_snapshot)})"
+    headers = ["Metric", "Value", prev_label, "Change"]
     ws.column_dimensions["A"].width = 48
     ws.column_dimensions["B"].width = 28
+    ws.column_dimensions["C"].width = 22
+    ws.column_dimensions["D"].width = 16
 
     for col, header in enumerate(headers, 1):
         cell = ws.cell(row=1, column=col, value=header)
@@ -181,13 +175,116 @@ def write(
 
     ws.freeze_panes = "A2"
 
-    for row_idx, (metric, value) in enumerate(rows, 2):
+    for row_idx, row in enumerate(rows, 2):
+        metric = row[0]
+        fmt = row[4] if len(row) > 4 else None
         a = ws.cell(row=row_idx, column=1, value=metric)
-        b = ws.cell(row=row_idx, column=2, value=value)
         a.alignment = LEFT
-        b.alignment = LEFT
         if metric and metric.startswith("──"):
             a.font = Font(bold=True, size=11, color="1F4E79")
-        else:
-            a.font = Font(size=11)
-            b.font = Font(size=11)
+            continue
+        a.font = Font(size=11)
+        for col, val in enumerate(row[1:4], start=2):
+            cell = ws.cell(row=row_idx, column=col, value=val)
+            cell.alignment = LEFT
+            cell.font = Font(size=11)
+            if fmt and isinstance(val, (int, float)):
+                cell.number_format = _CHANGE_FORMATS[fmt] if col == 4 else _VALUE_FORMATS[fmt]
+            if col == 4 and isinstance(val, (int, float)) and val:
+                cell.font = Font(size=11, color="548235" if val > 0 else "C00000")
+            if col == 3 and isinstance(val, str) and val.startswith("carried"):
+                cell.font = Font(size=11, color="C55A11")
+
+
+# KPI rows on the summary: (section, [(label, snapshot key, format)])
+# format: "int" | "dec" | "pct" (stored 0–100)
+_KPI_SECTIONS = [
+    ("M365 Copilot", [
+        ("Total Licenses", "total_licenses", "int"),
+        ("Enabled Users", "enabled_users", "int"),
+        ("Active Users", "active_users", "int"),
+        ("Activation Rate", "activation_rate", "pct"),
+        ("Adoption Rate", "adoption_rate", "pct"),
+        ("Power Users", "power_users", "int"),
+        ("Total Prompts", "total_prompts", "int"),
+        ("Avg Prompts / Active User", "avg_prompts_per_user", "dec"),
+        ("Copilot Chat Users", "chat_users", "int"),
+        ("Copilot Chat Active Users", "chat_active_users", "int"),
+        ("Copilot Chat Prompts", "chat_prompts", "int"),
+    ]),
+    ("Viva Copilot Adoption (last 4 weeks of data)", [
+        ("Enabled Users", "viva_enabled_users", "int"),
+        ("Active Users", "viva_active_users", "int"),
+        ("Copilot Actions", "viva_total_actions", "int"),
+    ]),
+    ("Agents & Connectors", [
+        ("Agents with Usage (M365 report)", "m365_active_agents", "int"),
+        ("Agent Users", "m365_agent_users", "int"),
+        ("Agent Responses", "m365_agent_responses", "int"),
+        ("Connector Users", "connector_users", "int"),
+        ("Connector Responses", "connector_responses", "int"),
+        ("Cowork Users", "cowork_users", "int"),
+        ("Cowork Tasks", "cowork_tasks", "int"),
+    ]),
+    ("Copilot Studio Agents (last 4 weeks of data)", [
+        ("Sessions", "cs_sessions", "int"),
+        ("Resolution Rate", "cs_resolution_rate", "pct"),
+        ("Escalation Rate", "cs_escalation_rate", "pct"),
+        ("Abandon Rate", "cs_abandon_rate", "pct"),
+        ("Avg CSAT", "cs_csat_avg", "dec"),
+        ("Peak Weekly Active Users", "cs_peak_wau", "int"),
+    ]),
+    ("Agent Inventory & Conversations", [
+        ("Total Agents", "total_agents", "int"),
+        ("Active Agents (OTel)", "active_agents", "int"),
+        ("Utilization Rate", "utilization_rate", "pct"),
+        ("Production Agents", "production_agents", "int"),
+        ("Non-Prod Agents", "non_prod_agents", "int"),
+        ("Ownership Coverage", "ownership_pct", "pct"),
+        ("Total Conversations", "total_conversations", "int"),
+        ("Agent Adopters", "agent_adopters", "int"),
+        ("Agent Adoption %", "agent_adoption_pct", "pct"),
+    ]),
+    ("Credits", [
+        ("Entitled Credits", "credits_entitled", "dec"),
+        ("Prepaid Consumed", "credits_prepaid", "dec"),
+        ("PAYG Consumed", "credits_payg", "dec"),
+        ("% Entitlement Used", "credits_pct_used", "pct"),
+        ("Viva Consumption Credits (last 4 weeks)", "consumption_credits", "dec"),
+    ]),
+]
+
+_VALUE_FORMATS = {"int": "#,##0", "dec": "#,##0.0", "pct": "0.0%"}
+# pct changes are percentage points, shown in % format (0.012 → +1.2%).
+_CHANGE_FORMATS = {"int": "+#,##0;-#,##0;0", "dec": "+#,##0.0;-#,##0.0;0", "pct": "+0.0%;-0.0%;0.0%"}
+
+
+def _period_label(snap: dict) -> str:
+    return snap.get("period") or (snap.get("snapshot_date") or "")[:10]
+
+
+def _kpi_rows(current: dict, previous: dict | None) -> list[tuple]:
+    """(label, value, previous, change, format) rows; metrics with no value
+    in either period are skipped."""
+    def val(snap, key, fmt):
+        v = (snap or {}).get(key)
+        if v is None:
+            return None
+        return v / 100 if fmt == "pct" else v
+
+    title = f"KPIs — period {_period_label(current)}"
+    if current.get("period_end"):
+        title += f" (data to {current['period_end']})"
+    out: list[tuple] = [(None, None), (f"── {title} ─────────", None)]
+    for section, metrics in _KPI_SECTIONS:
+        section_rows = []
+        for label, key, fmt in metrics:
+            cur, prev = val(current, key, fmt), val(previous, key, fmt)
+            if cur is None and prev is None:
+                continue
+            change = cur - prev if cur is not None and prev is not None else None
+            section_rows.append((f"  {label}", cur if cur is not None else "—", prev, change, fmt))
+        if section_rows:
+            out.append((f"── {section} ─────────", None))
+            out += section_rows
+    return out

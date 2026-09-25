@@ -291,7 +291,38 @@ CREATE TABLE IF NOT EXISTS kpi_snapshots (
     env_teams            INTEGER,
     env_production       INTEGER,
     env_sandbox          INTEGER,
-    env_trial            INTEGER
+    env_trial            INTEGER,
+    -- ── schema_v3: period-keyed snapshots + CSV-sourced metrics ──
+    -- Metrics are NULL when their source wasn't loaded in that period's run.
+    period               TEXT,   -- data period (YYYY-MM) the snapshot describes — one row per period
+    period_end           TEXT,   -- latest report date among the exports loaded for this period
+    sources_loaded       TEXT,   -- tables loaded in the run that produced this snapshot
+    chat_users           INTEGER,
+    chat_active_users    INTEGER,
+    chat_prompts         INTEGER,
+    connector_users      INTEGER,
+    connector_responses  INTEGER,
+    m365_agent_users     INTEGER,
+    m365_active_agents   INTEGER,
+    m365_agent_responses INTEGER,
+    viva_enabled_users   INTEGER,
+    viva_active_users    INTEGER,
+    viva_total_actions   INTEGER,
+    cs_sessions          INTEGER,
+    cs_resolution_rate   REAL,
+    cs_escalation_rate   REAL,
+    cs_abandon_rate      REAL,
+    cs_csat_avg          REAL,
+    cs_peak_wau          INTEGER,
+    cowork_users         INTEGER,
+    cowork_tasks         INTEGER,
+    credits_entitled     REAL,
+    credits_prepaid      REAL,
+    credits_payg         REAL,
+    credits_pct_used     REAL,
+    capacity_total       REAL,
+    capacity_avg_daily   REAL,
+    consumption_credits  REAL
 );
 
 -- ── Viva / Copilot Studio report tables ───────────────────────────────────
@@ -1298,3 +1329,36 @@ FROM (
 LEFT JOIN m365_copilot_usage_graph g ON g.user_principal_name = k.user_principal_name
 LEFT JOIN m365_copilot_usage_csv c   ON c.user_principal_name = k.user_principal_name;
 """
+
+# kpi_snapshots columns added in schema_v3 (name, SQL type).
+_KPI_V3_COLUMNS = (
+    ("period", "TEXT"),
+    ("period_end", "TEXT"),
+    ("sources_loaded", "TEXT"),
+    ("chat_users", "INTEGER"),
+    ("chat_active_users", "INTEGER"),
+    ("chat_prompts", "INTEGER"),
+    ("connector_users", "INTEGER"),
+    ("connector_responses", "INTEGER"),
+    ("m365_agent_users", "INTEGER"),
+    ("m365_active_agents", "INTEGER"),
+    ("m365_agent_responses", "INTEGER"),
+    ("viva_enabled_users", "INTEGER"),
+    ("viva_active_users", "INTEGER"),
+    ("viva_total_actions", "INTEGER"),
+    ("cs_sessions", "INTEGER"),
+    ("cs_resolution_rate", "REAL"),
+    ("cs_escalation_rate", "REAL"),
+    ("cs_abandon_rate", "REAL"),
+    ("cs_csat_avg", "REAL"),
+    ("cs_peak_wau", "INTEGER"),
+    ("cowork_users", "INTEGER"),
+    ("cowork_tasks", "INTEGER"),
+    ("credits_entitled", "REAL"),
+    ("credits_prepaid", "REAL"),
+    ("credits_payg", "REAL"),
+    ("credits_pct_used", "REAL"),
+    ("capacity_total", "REAL"),
+    ("capacity_avg_daily", "REAL"),
+    ("consumption_credits", "REAL"),
+)

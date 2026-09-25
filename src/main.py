@@ -610,9 +610,11 @@ def cmd_sync() -> str:
     # ── KPI snapshot ─────────────────────────────────────────────────────────
     print("\n[KPI Snapshot]")
     try:
-        snap    = store.compute_kpi_snapshot(settings.lookback_days, settings.total_licenses)
+        snap    = store.compute_kpi_snapshot(
+            settings.lookback_days, settings.total_licenses, period=settings.kpi_period or None,
+        )
         store.upsert_kpi_snapshot(snap)
-        print(f"  saved ({snap['snapshot_date'][:10]})")
+        print(f"  saved period {snap['period']} (data to {snap['period_end']})")
     except Exception as e:
         print(f"  WARNING: KPI snapshot failed: {e}")
 
@@ -644,6 +646,13 @@ def cmd_export(run_id: str) -> None:
     aad_users          = store.fetch_aad_users()
     model_calls        = store.fetch_gen_ai_model_calls()
     kpi_snapshots      = store.fetch_kpi_snapshots()
+    kpi_trends         = {
+        "copilot_weekly":         store.fetch_trend_copilot_weekly(),
+        "agent_sessions_monthly": store.fetch_trend_agent_sessions_monthly(),
+        "credits_monthly":        store.fetch_trend_credits_monthly(),
+        "services_monthly":       store.fetch_trend_services_monthly(),
+    }
+    import_status      = store.fetch_import_status()
     az_dep_failures    = store.fetch_az_dependency_failures()
     az_exceptions      = store.fetch_az_exceptions()
     az_alerts          = store.fetch_az_alerts()
@@ -729,6 +738,8 @@ def cmd_export(run_id: str) -> None:
         health_detail=health_detail, crossref_summary=crossref_summary,
         copilot_usage=copilot_usage, teams_usage=teams_usage,
         kpi_snapshots=kpi_snapshots,
+        kpi_trends=kpi_trends,
+        import_status=import_status,
         viva_person_insights=viva_person_insights,
         viva_reports_cs_session_metrics=viva_reports_cs_session_metrics,
         viva_reports_cs_topic_metrics=viva_reports_cs_topic_metrics,

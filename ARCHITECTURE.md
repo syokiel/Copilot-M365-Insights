@@ -156,7 +156,7 @@ A separate, optional conversational front-end (`bot.py`) — not part of the syn
 
 ## Multi-tenant support
 
-Each tenant gets its own `.env` file (`.env.mwc`, `.env.stryker`, etc.) and typically its own SQLite DB / output path. `--env <file>` must be the first CLI argument pair (`python -m src.main --env .env.stryker all`) because `src/main.py` loads it with `override=True` *before* importing any `config.*`/`src.*` module — those modules read env vars at import time via `python-dotenv`, so the load order is load-bearing, not cosmetic.
+Each tenant gets its own `.env` file (e.g. `.env.<tenant>`) and typically its own SQLite DB / output path. `--env <file>` must be the first CLI argument pair (`python -m src.main --env .env.<tenant> all`) because `src/main.py` loads it with `override=True` *before* importing any `config.*`/`src.*` module — those modules read env vars at import time via `python-dotenv`, so the load order is load-bearing, not cosmetic.
 
 ## Why these boundaries
 

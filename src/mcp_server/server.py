@@ -302,8 +302,15 @@ Maps agent_id to a journey_name + persona_type for the experience model.
 - agent_id, journey_name, persona_type (PK), agent_name
 
 ### kpi_snapshots
-Pre-aggregated daily KPI row — backs the get_kpi_snapshot tool.
-- snapshot_date, lookback_days
+One KPI row per data period (month) — backs the get_kpi_snapshot tool (latest period). Query it
+ORDER BY period for month-over-month history. Metrics are NULL when their source export wasn't
+loaded that period.
+- period (YYYY-MM), period_end (latest report date in that period's exports), snapshot_date (when computed), lookback_days
+- CSV-sourced: chat_users/chat_active_users/chat_prompts, connector_users/connector_responses,
+  m365_agent_users/m365_active_agents/m365_agent_responses, cowork_users/cowork_tasks
+- Last 4 weeks of dated history: viva_enabled_users/viva_active_users/viva_total_actions,
+  cs_sessions/cs_resolution_rate/cs_escalation_rate/cs_abandon_rate/cs_csat_avg/cs_peak_wau
+- Credits: credits_entitled/credits_prepaid/credits_payg/credits_pct_used, capacity_total/capacity_avg_daily, consumption_credits
 - License/adoption: total_licenses, enabled_users, active_users, activation_rate, adoption_rate, power_users, total_prompts, avg_prompts_per_user
 - Per-workload prompts: prompts_copilot_chat/teams/outlook/excel/word/powerpoint/onenote/loop
 - Agent adoption: agent_adopters, agent_adoption_pct
@@ -463,7 +470,7 @@ async def list_tools() -> ListToolsResult:
     return ListToolsResult(tools=[
         Tool(
             name="get_kpi_snapshot",
-            description="Pre-aggregated KPI summary (conversations, active users, connector health, license/agent adoption). Does NOT include token or credit consumption — use run_sql against gen_ai_model_calls / tokenomics_* for that. Call this first for overview questions.",
+            description="KPI summary for the latest data period (month): Copilot licences/enabled/active users and prompts, Copilot Chat, Viva adoption, agent usage and Copilot Studio session outcomes, connectors, credits. For month-over-month history run_sql against kpi_snapshots ORDER BY period. Call this first for overview questions.",
             inputSchema={"type": "object", "properties": {}, "required": []},
         ),
         Tool(
@@ -647,9 +654,11 @@ def _fmt_kpi(rows: list) -> str:
     r = rows[0] if isinstance(rows, list) else rows
     if not isinstance(r, dict):
         return str(r)
-    lines = [f"KPI Snapshot — {r.get('snapshot_date','')[:10]} (last {r.get('lookback_days','')}d)"]
+    period = r.get("period") or r.get("snapshot_date", "")[:10]
+    data_to = f", data to {r['period_end']}" if r.get("period_end") else ""
+    lines = [f"KPI Snapshot — period {period}{data_to}"]
     for k, v in r.items():
-        if k not in ("snapshot_date", "lookback_days") and v is not None:
+        if k not in ("snapshot_date", "lookback_days", "period", "period_end") and v is not None:
             lines.append(f"  {k}: {v}")
     return "\n".join(lines)
 
@@ -744,19 +753,16 @@ def _dispatch(name: str, args: dict) -> object:
 # ---------------------------------------------------------------------------
 
 def _get_kpi_snapshot(conn: sqlite3.Connection) -> dict:
-    """Return the most recent pre-aggregated KPI snapshot, falling back to live counts."""
+    """Return the KPI snapshot for the latest data period (metrics that
+    weren't available that period are omitted), falling back to live counts."""
     row = conn.execute("""
-        SELECT snapshot_date, lookback_days,
-               total_licenses, enabled_users, active_users,
-               activation_rate, adoption_rate, power_users,
-               total_prompts, avg_prompts_per_user,
-               total_agents, active_agents, utilization_rate,
-               production_agents, non_prod_agents,
-               total_conversations, agent_adopters, agent_adoption_pct
-        FROM kpi_snapshots ORDER BY snapshot_date DESC LIMIT 1
+        SELECT * FROM kpi_snapshots
+        ORDER BY COALESCE(period_end, substr(snapshot_date, 1, 10)) DESC, snapshot_date DESC
+        LIMIT 1
     """).fetchone()
     if row:
-        return dict(row)
+        return {k: v for k, v in dict(row).items()
+                if v is not None and k not in ("snapshot_id", "sources_loaded")}
     # Fallback to live aggregation if no snapshot exists
     return _get_summary_stats(conn)
 

@@ -26,7 +26,7 @@ python -m src.main export
 python -m src.main import-viva <path/to/csv/folder>
 
 # Multi-tenant: point at a different .env (must be the first two args)
-python -m src.main --env .env.stryker all
+python -m src.main --env .env.<tenant> all
 
 # Deploy MCP server to Azure Container Apps
 bash deploy.sh deploy-config/<tenant>.env
@@ -49,7 +49,7 @@ There is no test suite, linter, or type-checker configured in this repo (no `tes
 
 **CSV imports are a second, parallel input path**, separate from the live-API fetchers. Each `{ENV_VAR}` documented in the README (e.g. `VIVA_REPROT_CS_DIR`, `M365ADMIN_AGENT_INVENTORY`) points at a manually-exported file/folder; when the var is set, the corresponding importer in `src/fetchers/` (e.g. `viva_report.py`, `m365_admin_report.py`, `m365_usage_report.py`, `ppadmin_consumption.py`) runs automatically as part of `sync`/`all`. `config/settings.py` resolves glob patterns in these paths to the most-recently-modified matching file, so wildcarded env values survive the date-suffixed filenames the M365 Admin Center appends on every export.
 
-**Multi-tenant via `--env`.** `--env <file>` must be the first CLI argument pair — `src/main.py` loads it with `override=True` before any `config.*`/`src.*` module is imported, since `config/settings.py` reads env vars at import time. Each tenant gets its own `.env` file (see `.env.mwc`, `.env.stryker` in this repo) and typically its own SQLite DB / output path.
+**Multi-tenant via `--env`.** `--env <file>` must be the first CLI argument pair — `src/main.py` loads it with `override=True` before any `config.*`/`src.*` module is imported, since `config/settings.py` reads env vars at import time. Each tenant gets its own `.env` file (`.env.<tenant>`, gitignored) and typically its own SQLite DB / output path.
 
 **XLA experience-model scoring** (`src/writers/sheet_xla*.py`) joins session metrics against a manually-maintained `agent_id → journey_name → persona_type` mapping (`imports/agent_journey_persona_map.csv`, loaded via `AGENT_JOURNEY_MAP`) to score agents by persona/journey rather than raw pass/fail. Score formula: `completion_rate × 0.6 + (100 − escalation_rate) × 0.2 + (100 − abandonment_rate) × 0.2`. If you add a new agent or change journey/persona taxonomy, this CSV — not code — is what needs updating.
 
@@ -64,7 +64,7 @@ There is no test suite, linter, or type-checker configured in this repo (no `tes
 ## Conventions worth knowing
 
 - Every store upsert starts with `self._begin_import(table, rows, snapshot=...)` inside its transaction: `snapshot=True` for point-in-time exports (table is cleared and reloaded), `False` for date-keyed history (merged by key). New CSV imports must pick one — a missing call means stale rows accumulate across months.
-- Store UPNs through `_upn()` (lower-cased); `_upsert_dim_user` does this itself. Schema changes to existing tables need a step in `src/store/_migrations.py` plus a new `SCHEMA_VERSION`.
+- Store UPNs through `_upn()` (lower-cased); `_upsert_dim_user` does this itself. Schema changes go in the `_schema.py` DDL (new DBs) *and* as a new idempotent step appended to `MIGRATIONS` in `src/store/_migrations.py` (existing DBs).
 
 - Settings (`config/settings.py`) load from `.env` via `python-dotenv` at import time — order of imports matters when a script needs a non-default env file (see `--env` handling above).
 - `_resolve_glob` in `config/settings.py` handles the "M365 Admin Center appends a timestamp to every export filename" problem — prefer wildcarding new CSV-import env vars rather than hardcoding filenames.

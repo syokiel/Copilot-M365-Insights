@@ -79,6 +79,9 @@ class Settings:
     # Optional: total Copilot license count for activation rate KPI.
     # Not derivable from usage data — set from your admin centre licence count.
     total_licenses: int = 0
+    # Data period (YYYY-MM) for the KPI snapshot; blank = derived from the
+    # latest report date in the exports loaded by the sync.
+    kpi_period: str = ""
     # ── Viva Insights CSV exports ────────────────────────────────────────────
     # Viva CS (Copilot Studio) analytics CSV export folder.
     # Set VIVA_REPORT_CS_DIR (or VIVA_REPROT_CS_DIR) to the folder containing
@@ -172,6 +175,7 @@ class Settings:
         )
         self.agent_env_ids = {i.strip() for i in raw_ids.split(",") if i.strip()} if raw_ids else set()
         self.total_licenses = int(os.getenv("TOTAL_LICENSES", str(self.total_licenses)))
+        self.kpi_period = os.getenv("KPI_PERIOD", self.kpi_period).strip()
         self.viva_reports_cs_report_dir = (
             os.getenv("VIVA_REPORT_CS_DIR") or
             os.getenv("VIVA_REPROT_CS_DIR") or   # accept common typo

@@ -13,6 +13,7 @@ from src.writers import (
     sheet_environments,
     sheet_invocations,
     sheet_kpi_history,
+    sheet_kpi_trends,
     sheet_m365_admin_inventory,
     sheet_m365_connectors_usage,
     sheet_m365_connectors_users,
@@ -75,6 +76,8 @@ def build_workbook(
     copilot_usage: list[dict] | None = None,
     teams_usage: list[dict] | None = None,
     kpi_snapshots: list[dict] | None = None,
+    kpi_trends: dict[str, list[dict]] | None = None,
+    import_status: list[dict] | None = None,
     viva_person_insights: list[dict] | None = None,
     viva_reports_cs_session_metrics: list[dict] | None = None,
     viva_reports_cs_topic_metrics: list[dict] | None = None,
@@ -140,16 +143,13 @@ def build_workbook(
             write_fn(wb.create_sheet(name), *args)
 
     latest_kpi = kpi_snapshots[0] if kpi_snapshots else None
+    previous_kpi = kpi_snapshots[1] if kpi_snapshots and len(kpi_snapshots) > 1 else None
 
     # Always-present sheets (summary / history depend on all data)
     if _allowed("KPI History"):
-        sheet_kpi_history.write(
-            wb.create_sheet("KPI History"),
-            kpi_snapshots or [],
-            entitlement=tokenomics_entitlement_consumption or [],
-            per_agent=tokenomics_entitlement_per_agent or [],
-            capacity=tokenomics_capacity_consumption or [],
-        )
+        sheet_kpi_history.write(wb.create_sheet("KPI History"), kpi_snapshots or [])
+    if kpi_trends and any(kpi_trends.values()) and _allowed("KPI Trends"):
+        sheet_kpi_trends.write(wb.create_sheet("KPI Trends"), kpi_trends)
     if _allowed("Copilot_Adoption_Summary"):
         sheet_summary.write(
             wb.create_sheet("Copilot_Adoption_Summary"), events, connector_calls, model_calls or [],
@@ -158,6 +158,8 @@ def build_workbook(
             viva_reports_cs_wau=viva_reports_cs_weekly_active_users or [],
             viva_reports_cs_autonomous=viva_reports_cs_autonomous_metrics or [],
             viva_reports_cs_agents=viva_reports_cs_copilot_agents or {},
+            previous_kpi_snapshot=previous_kpi,
+            import_status=import_status or [],
         )
 
     if (m365_cowork_usage or viva_consumption_detail) and _allowed("Cowork_Summary"):

@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from src.store._migrations import LEGACY_MIGRATIONS, SCHEMA_VERSION, migrate_to_v2
+from src.store._migrations import LEGACY_MIGRATIONS, MIGRATIONS
 from src.store._schema import _DDL, _POST
 
 
@@ -31,7 +31,8 @@ class StoreBase:
         is_new = self._conn.execute("SELECT COUNT(*) FROM sqlite_master").fetchone()[0] == 0
         self._conn.executescript(_DDL)
         if is_new:
-            self._mark_migration_applied(SCHEMA_VERSION)
+            for migration_id, _ in MIGRATIONS:
+                self._mark_migration_applied(migration_id)
         else:
             self._migrate()
         # Indexes + compatibility views run after migrations so they see the
@@ -40,15 +41,18 @@ class StoreBase:
         self._conn.commit()
 
     def _migrate(self) -> None:
-        if self._migration_applied(SCHEMA_VERSION):
+        pending = [(mid, fn) for mid, fn in MIGRATIONS if not self._migration_applied(mid)]
+        if not pending:
             return
-        missing = [m for m in LEGACY_MIGRATIONS if not self._migration_applied(m)]
-        if missing:
-            raise RuntimeError(
-                f"Database predates the consolidated schema (missing migrations: {', '.join(missing)}). "
-                "Their upgrade code has been retired — rebuild the database with a fresh sync."
-            )
-        migrate_to_v2(self)
+        if not self._migration_applied("schema_v2"):
+            missing = [m for m in LEGACY_MIGRATIONS if not self._migration_applied(m)]
+            if missing:
+                raise RuntimeError(
+                    f"Database predates the consolidated schema (missing migrations: {', '.join(missing)}). "
+                    "Their upgrade code has been retired — rebuild the database with a fresh sync."
+                )
+        for _, migrate in pending:
+            migrate(self)
 
     # ------------------------------------------------------------------
     # Migration sentinel helpers

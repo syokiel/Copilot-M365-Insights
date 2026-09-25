@@ -1,13 +1,14 @@
-"""One-time upgrade of existing databases to the current schema.
+"""In-place upgrades of existing databases to the current schema.
 
 New databases are created directly in the current shape (see _schema.py) and
-never run this. Existing databases run migrate_to_v2 once, in a single
-transaction; if any step fails the whole upgrade rolls back and is retried
-on the next start.
+are marked with every version in MIGRATIONS. Existing databases run each
+missing step once, in order, each in its own transaction; if a step fails it
+rolls back and is retried on the next start.
 """
 from src.store._schema import (
     _COPILOT_USAGE_CSV_COLUMNS,
     _COPILOT_USAGE_GRAPH_COUNT_COLUMNS,
+    _KPI_V3_COLUMNS,
     _VIEW_NAMES,
 )
 
@@ -17,7 +18,6 @@ from src.store._schema import (
 LEGACY_MIGRATIONS = (
     "dim_agent_v1", "copilot_actions_v1", "service_usage_v1", "dim_user_v1", "app_activity_v1",
 )
-SCHEMA_VERSION = "schema_v2"
 
 # (table, UPN column) pairs lower-cased by the upgrade. dim_user and the
 # m365_copilot_usage split are handled separately (they need merging).
@@ -131,10 +131,35 @@ def migrate_to_v2(store) -> None:
         store._prune_zero_copilot_actions()
         store.rebuild_agent_xref()
 
-        store._mark_migration_applied(SCHEMA_VERSION)
+        store._mark_migration_applied("schema_v2")
         conn.commit()
     except Exception:
         conn.rollback()
         raise
     # Reclaim the space freed above (must run outside a transaction).
     conn.execute("VACUUM")
+
+
+def migrate_to_v3(store) -> None:
+    """kpi_snapshots becomes one row per data period, with CSV-sourced
+    metrics. Existing snapshots keep period = NULL (shown by their run date)."""
+    conn = store._conn
+    conn.commit()
+    conn.execute("BEGIN")
+    try:
+        existing = _columns(conn, "kpi_snapshots")
+        for name, sql_type in _KPI_V3_COLUMNS:
+            if name not in existing:
+                conn.execute(f"ALTER TABLE kpi_snapshots ADD COLUMN {name} {sql_type}")
+        store._mark_migration_applied("schema_v3")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+
+
+# Applied in order; a new database starts with all of them marked applied.
+MIGRATIONS = (
+    ("schema_v2", migrate_to_v2),
+    ("schema_v3", migrate_to_v3),
+)
